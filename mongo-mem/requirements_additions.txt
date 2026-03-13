@@ -1,0 +1,9 @@
+# Add these to your existing backend/requirements.txt
+# (memory layer additions)
+
+motor>=3.3.0            # async MongoDB driver
+qdrant-client>=1.9.0    # Qdrant async client
+asyncpg>=0.29.0         # async Postgres driver
+redis[asyncio]>=5.0.0   # async Redis client
+pymongo>=4.6.0          # needed by motor for bson.ObjectId
+httpx>=0.27.0           # already in requirements, confirm version

@@ -1,0 +1,37 @@
+nodes:
+  - name: l4-360
+    host: 100.83.254.6
+    user: poly
+    roles: [gpu, inference]
+    paths:
+      root: /mnt/AetherPro
+      models: /mnt/AetherPro/models
+      llm: /mnt/AetherPro/models/llm
+      voice: /mnt/AetherPro/models/voice
+      vision: /mnt/AetherPro/models/vision
+      audio: /mnt/AetherPro/models/audio
+
+  - name: l40s-180
+    host: 100.79.252.28
+    user: poly
+    roles: [gpu, inference]
+    paths:
+      root: /mnt/AetherPro
+      models: /mnt/AetherPro/models
+      llm: /mnt/AetherPro/models/llm
+      voice: /mnt/AetherPro/models/voice
+      vision: /mnt/AetherPro/models/vision
+      audio: /mnt/AetherPro/models/audio
+
+  - name: l40s-90
+    host: 100.94.41.113
+    user: poly
+    roles: [gpu, primary, inference]
+    paths:
+      root: /mnt/AetherPro
+      models: /mnt/AetherPro/models
+      llm: /mnt/AetherPro/models/llm
+      voice: /mnt/AetherPro/models/voice
+      vision: /mnt/AetherPro/models/vision
+      audio: /mnt/AetherPro/models/audio
+      cyan_kiwi: /mnt/AetherPro/models/CyanKiwi

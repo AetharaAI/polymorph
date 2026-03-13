@@ -1,0 +1,39 @@
+version: "3.8"
+
+networks:
+  aether-ai:
+    external: true
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: aether-gateway
+    networks:
+      - aether-ai
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:4000:4000"        # ONLY THING EXPOSED TO THE INTERNET
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--detailed_debug"]
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    restart: unless-stopped
+
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: litellm-redis
+#    ports:
+#      - "6379:6379"
+    networks:
+      - aether-ai
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+

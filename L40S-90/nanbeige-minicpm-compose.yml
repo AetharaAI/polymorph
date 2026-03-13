@@ -1,0 +1,77 @@
+networks:
+  aether-ops:
+    external: true
+
+services:
+
+  minicpm-v:
+    image: vllm/vllm-openai:latest
+    container_name: minicpm-v
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    runtime: nvidia
+
+    environment:
+      - HF_HOME=/cache
+      - VLLM_VIDEO_LOADER_BACKEND=enhanced_opencv
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+
+    ports:
+      - "8101:8000"
+
+    command: >
+      /models/vision/openbmb/MiniCPM-V-4_5-AWQ
+      --served-model-name minicpm-v-4.5
+      --dtype auto
+      --gpu-memory-utilization 0.65
+      --max-model-len 4096
+      --trust-remote-code
+      --port 8000
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --enable-prefix-caching
+      --limit-mm-per-prompt '{"image":1, "video": 1}'
+      --api-key EMPTY
+      --generation-config vllm
+
+    restart: unless-stopped
+
+  nanbeige4-3b-thinking:
+    image: vllm/vllm-openai:latest
+    container_name: nanbeige4-3b-thinking
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    runtime: nvidia
+
+    environment:
+      - HF_HOME=/cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+
+    ports:
+      - "8102:8000"
+
+    command: >
+      /models/llm/Nanbeige/Nanbeige4-3B-Thinking-2511
+      --served-model-name nanbeige4-3b-thinking
+      --dtype auto
+      --gpu-memory-utilization 0.20
+      --max-model-len 8192
+      --port 8000
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --enable-prefix-caching
+      --generation-config vllm
+
+    restart: unless-stopped

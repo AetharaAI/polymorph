@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-02-28T13:58:36.299473+00:00",
+  "status": "fail",
+  "passed": 2,
+  "total": 3,
+  "results": [
+    {
+      "label": "litellm-primary:qwen3-next-instruct",
+      "ok": true,
+      "stop_reason": "end_turn",
+      "text_preview": "OK",
+      "error": null
+    },
+    {
+      "label": "litellm-secondary:minicpm-v-4.5",
+      "ok": false,
+      "stop_reason": null,
+      "text_preview": "",
+      "error": "ReadTimeout: "
+    },
+    {
+      "label": "litellm-secondary:nanbeige4-3b-thinking",
+      "ok": true,
+      "stop_reason": "end_turn",
+      "text_preview": "<think>\nOkay, the user just said \"Reply with: OK\". Let me parse that.\n\nFirst, they want me to reply exactly with \"OK\". T",
+      "error": null
+    }
+  ]
+}

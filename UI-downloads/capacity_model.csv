@@ -1,0 +1,7 @@
+scenario,context_tokens,est_input_tokens,est_output_tokens,est_iterations,est_runtime_risk,est_hallucination_risk,mitigation
+Short Q&A,2048,500,250,1,LOW,LOW,Use temperature=0.1, include prompt constraints for factual responses
+Document Analysis,32768,15000,2000,1,MEDIUM,MEDIUM,Split large docs into chunks, validate key claims against source
+Web Research,16384,8000,1500,2,HIGH,LOW,Cross-reference 3+ sources per claim, log all URLs cited
+Code Debug,8192,4000,3000,3,HIGH,HIGH,Execute code in sandbox before reporting, verify with unit tests
+Long-horizon Planning,65536,20000,4000,5,VERY_HIGH,MEDIUM,Use chain-of-thought reasoning, break into subtasks with verification
+Mixed-mode Session,131072,25000,5000,4,HIGH,MEDIUM,Implement output validation layer, human-in-loop for critical decisions

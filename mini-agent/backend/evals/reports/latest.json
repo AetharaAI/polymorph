@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-02-28T13:17:31.258434+00:00",
+  "passed": 7,
+  "total": 7,
+  "status": "pass",
+  "live_provider": false,
+  "provider": {
+    "configured": false,
+    "provider": "anthropic",
+    "model": "MiniMax-M2.5",
+    "detail": "Missing Anthropic/MiniMax credentials (PROVIDER_ANTHROPIC_API_KEY or MINIMAX_API_KEY)"
+  },
+  "results": [
+    {
+      "name": "calculator",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "result=115"
+    },
+    {
+      "name": "shell_allowlist",
+      "ok": true,
+      "duration_ms": 3,
+      "detail": "pwd_ok=True blocked_msg=Error: Command 'rm' is not allowed. Allowed commands: awk, cat, curl, cut, date,"
+    },
+    {
+      "name": "python_exec",
+      "ok": true,
+      "duration_ms": 13,
+      "detail": "Execution time: 0.01s\n\n--- stdout ---\n42\n"
+    },
+    {
+      "name": "dispatch_fallback",
+      "ok": true,
+      "duration_ms": 16,
+      "detail": "12"
+    },
+    {
+      "name": "file_roundtrip",
+      "ok": true,
+      "duration_ms": 1,
+      "detail": "file_id=5fac2fae62bb4bac validation=valid"
+    },
+    {
+      "name": "artifact_validation",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"status\": \"invalid\", \"kind\": \"csv\", \"valid\": false, \"warnings\": [\"CSV row width mismatch. Expected 3 columns; mismatched rows include: [2]\"]}"
+    },
+    {
+      "name": "provider_config",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"configured\": false, \"provider\": \"anthropic\", \"model\": \"MiniMax-M2.5\", \"detail\": \"Missing Anthropic/MiniMax credentials (PROVIDER_ANTHROPIC_API_KEY or MINIMAX_API_KEY)\", \"note\": \"provider credentials not present; live contract check skipped\"}"
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-28T13:39:22.977857+00:00",
+  "passed": 7,
+  "total": 8,
+  "status": "fail",
+  "live_provider": true,
+  "provider": {
+    "configured": true,
+    "provider": "openai_compat",
+    "model": "qwen3-vl-local",
+    "detail": "provider=openai_compat model=qwen3-vl-local"
+  },
+  "results": [
+    {
+      "name": "calculator",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "result=115"
+    },
+    {
+      "name": "shell_allowlist",
+      "ok": true,
+      "duration_ms": 3,
+      "detail": "pwd_ok=True blocked_msg=Error: Command 'rm' is not allowed. Allowed commands: awk, cat, curl, cut, date,"
+    },
+    {
+      "name": "python_exec",
+      "ok": true,
+      "duration_ms": 13,
+      "detail": "Execution time: 0.01s\n\n--- stdout ---\n42\n"
+    },
+    {
+      "name": "dispatch_fallback",
+      "ok": true,
+      "duration_ms": 17,
+      "detail": "12"
+    },
+    {
+      "name": "file_roundtrip",
+      "ok": true,
+      "duration_ms": 1,
+      "detail": "file_id=b46bbdd1584b1921 validation=valid"
+    },
+    {
+      "name": "artifact_validation",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"status\": \"invalid\", \"kind\": \"csv\", \"valid\": false, \"warnings\": [\"CSV row width mismatch. Expected 3 columns; mismatched rows include: [2]\"]}"
+    },
+    {
+      "name": "provider_config",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"configured\": true, \"provider\": \"openai_compat\", \"model\": \"qwen3-vl-local\", \"detail\": \"provider=openai_compat model=qwen3-vl-local\"}"
+    },
+    {
+      "name": "provider_contract_live",
+      "ok": false,
+      "duration_ms": 21626,
+      "detail": "exception: Server error '500 Internal Server Error' for url 'https://api.aetherpro.tech/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    }
+  ]
+}

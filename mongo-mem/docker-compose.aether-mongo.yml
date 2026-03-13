@@ -1,0 +1,64 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════
+# AETHER-MAX AGENT MEMORY — MongoDB Instance
+# Dedicated to: episodic, semantic, procedural memory + vector search
+# Node: triad-r3-64-us-west-or-1 (same node as RedWatch postgres/redis)
+# ═══════════════════════════════════════════════════════════════
+#
+# DEPLOY:
+#   docker compose -f docker-compose.aether-mongo.yml up -d
+#
+# CONNECT:
+#   docker exec -it aether-mongo mongosh -u aether_admin -p <CHANGE_ME> --authenticationDatabase admin
+#
+# MONGO_URI for backend .env:
+#   AETHER_MONGO_URI=mongodb://aether_agent:CHANGE_ME_AGENT@localhost:27018/aether_memory?authSource=aether_memory
+# ═══════════════════════════════════════════════════════════════
+
+services:
+
+  aether-mongo:
+    image: mongo:7.0
+    container_name: aether-mongo
+    restart: unless-stopped
+    ports:
+      - "27018:27017"          # 27018 external — avoids clash with existing MongoDB on 27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: aether_admin
+      MONGO_INITDB_ROOT_PASSWORD: CHANGE_ME_ADMIN_PASS    # ← change before deploy
+      MONGO_INITDB_DATABASE: aether_memory
+    volumes:
+      - aether_mongo_data:/data/db
+      - aether_mongo_config:/data/configdb
+      - ./mongo-init/aether-init.js:/docker-entrypoint-initdb.d/aether-init.js:ro
+    command: >
+      mongod
+      --wiredTigerCacheSizeGB 4
+      --quiet
+    networks:
+      - aether_memory_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  aether_mongo_data:
+    name: aether_mongo_data
+    driver: local
+  aether_mongo_config:
+    name: aether_mongo_config
+    driver: local
+
+networks:
+  aether_memory_net:
+    name: aether_memory_net
+    driver: bridge

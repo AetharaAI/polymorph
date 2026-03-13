@@ -1,0 +1,7 @@
+model,total_100,tool_integrity_20,deterministic_accuracy_20,web_evidence_quality_20,artifact_operations_20,output_contract_20,continuity_10_optional,total_110_optional,notes
+qwen3.5-35b,,,,,,,,,
+qwen3.5-9b,,,,,,,,,
+qwen3.5-4b,,,,,,,,,
+jan-code-4b,,,,,,,,,
+nanbeige4-3b-thinking,,,,,,,,,
+minicpm-v-4.5,,,,,,,,,

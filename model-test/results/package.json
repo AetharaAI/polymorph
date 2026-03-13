@@ -1,0 +1,12 @@
+{
+  "name": "tool-sanity-test",
+  "version": "1.0.0",
+  "description": "Tool sanity test project",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests specified\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

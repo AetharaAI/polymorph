@@ -1,0 +1,193 @@
+fleet:
+  l4-360:
+    host_alias: l4-360
+    role: gpu-node
+    mounts:
+      /mnt/aetherpro:
+        status: confirmed
+        top_level:
+          - cache
+          - containers
+          - hf-cache
+          - lost+found
+          - models
+        models:
+          audio:
+            status: partially_confirmed
+            dirs:
+              - .locks
+              - OpenMOSS-Team
+              - Qwen
+              - Systran
+              - kokoro
+              - mistralai
+              - models--Systran--faster-whisper-base
+              - models--Systran--faster-whisper-large-v3
+              - nvidia
+              - personaplex
+              - whisper
+            expanded:
+              OpenMOSS-Team:
+                - MOSS-Audio-Tokenizer
+                - MOSS-SoundEffect
+                - MOSS-TTS
+                - MOSS-TTS-Realtime
+                - MOSS-TTSD-v1.0
+                - MOSS-VoiceGenerator
+              mistralai:
+                - Voxtral-Mini-4B-Realtime-2602
+              Qwen:
+                - Qwen3-ASR-1.7B
+              nvidia:
+                - music-flamingo-2601-hf
+            notes:
+              - Systran is present but not expanded in this pass
+              - kokoro present but not expanded
+              - personaplex present but not expanded
+              - whisper present but appears to include older/openai-style artifacts
+          embeddings:
+            status: confirmed
+            dirs:
+              - bge-m3
+          rerankers:
+            status: confirmed
+            dirs:
+              - bge-reranker-v2-m3
+          llm:
+            status: partially_confirmed
+            dirs:
+              - Nanbeige
+              - cyankiwi
+              - prithivMLmods
+            expanded:
+              cyankiwi:
+                - MiniMax-M2.5-REAP-139B-A10B-AWQ-4bit
+            notes:
+              - Nanbeige present but not expanded
+              - prithivMLmods present but not expanded
+          voice:
+            status: confirmed
+            dirs: []
+          vision:
+            status: partially_confirmed
+            dirs:
+              - cyankiwi
+            expanded:
+              cyankiwi:
+                - Qwen3.5-35B-A3B-AWQ-4bit
+          redwatchcyankiw:
+            status: confirmed
+            dirs:
+              - VulnLLM-R-7B-AWQ-8bit
+            notes:
+              - RedWatch cybersecurity model lane
+          redwatch:
+            status: known_root_unexpanded
+          diffusion:
+            status: known_root_unexpanded
+
+  l40s-180:
+    host_alias: l40s-180
+    role: gpu-node
+    mounts:
+      /mnt/aetherpro:
+        status: confirmed
+        top_level:
+          - cache
+          - hf
+          - hf-cache
+          - models
+          - torch
+        models:
+          vision:
+            status: confirmed
+            dirs:
+              - Qwen3-VL-30B-Thinking
+
+      /mnt/aetherpro-extra1:
+        status: confirmed
+        top_level:
+          - hf-cache
+          - llms
+          - lost+found
+          - models
+        models:
+          vision:
+            status: confirmed
+            dirs:
+              - Qwen3.5-122B-A10B-AWQ-4bit
+
+      /mnt/aetherpro-extra2:
+        status: confirmed
+        top_level:
+          - hf
+          - lost+found
+          - models
+          - pip_cache
+          - uv_cache
+        models:
+          llm:
+            status: confirmed
+            dirs:
+              - Kimi-K2.5
+            notes:
+              - Large full model directory present
+              - this is a real heavyweight storage target, not just a stub
+
+  l40s-90:
+    host_alias: l40s-90
+    role: gpu-node
+    mounts:
+      ~/aether-model-node/control:
+        status: confirmed_from_doc
+        top_level:
+          - .env
+          - config.yaml
+          - docker-compose.yml
+          - litellm
+          - run-model
+      /mnt/aetherpro:
+        status: partially_confirmed_from_doc
+        top_level:
+          - cache
+          - hf
+          - llm
+          - lost+found
+          - models
+        models:
+          cyankiwi:
+            status: confirmed_from_doc
+            dirs:
+              - Jan-code-4b-AWQ-4bit
+              - Qwen3.5-35B-A3B-AWQ-4bit
+              - Qwen3.5-4B-AWQ-4bit
+              - Qwen3.5-9B-AWQ-BF16-INT8
+          llm:
+            status: partially_confirmed_from_doc
+            dirs:
+              - LFM2.5-1.2B-Thinking
+              - Nanbeige
+              - apriel
+              - april
+              - cyankiwi
+              - mistral
+            expanded:
+              cyankiwi:
+                - Qwen3-30B-A3B-Thinking-2507-AWQ-4bit
+          sensors:
+            status: confirmed_from_doc
+            dirs:
+              - detection
+              - ocr
+              - pose
+              - tracking
+          vision:
+            status: confirmed_from_doc
+            dirs:
+              - Kimi-VL-A3B-Thinking-2506
+              - openbmb
+          voice:
+            status: confirmed_from_doc
+            dirs:
+              - any-any
+              - microsoft

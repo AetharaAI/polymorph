@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-28T13:55:56.341500+00:00",
+  "passed": 7,
+  "total": 8,
+  "status": "fail",
+  "live_provider": true,
+  "provider": {
+    "configured": true,
+    "provider": "openai_compat",
+    "model": "minicpm-v-4.5",
+    "detail": "provider=openai_compat model=minicpm-v-4.5"
+  },
+  "results": [
+    {
+      "name": "calculator",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "result=115"
+    },
+    {
+      "name": "shell_allowlist",
+      "ok": true,
+      "duration_ms": 3,
+      "detail": "pwd_ok=True blocked_msg=Error: Command 'rm' is not allowed. Allowed commands: awk, cat, curl, cut, date,"
+    },
+    {
+      "name": "python_exec",
+      "ok": true,
+      "duration_ms": 12,
+      "detail": "Execution time: 0.01s\n\n--- stdout ---\n42\n"
+    },
+    {
+      "name": "dispatch_fallback",
+      "ok": true,
+      "duration_ms": 22,
+      "detail": "12"
+    },
+    {
+      "name": "file_roundtrip",
+      "ok": true,
+      "duration_ms": 1,
+      "detail": "file_id=dfdede7025aa295e validation=valid"
+    },
+    {
+      "name": "artifact_validation",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"status\": \"invalid\", \"kind\": \"csv\", \"valid\": false, \"warnings\": [\"CSV row width mismatch. Expected 3 columns; mismatched rows include: [2]\"]}"
+    },
+    {
+      "name": "provider_config",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"configured\": true, \"provider\": \"openai_compat\", \"model\": \"minicpm-v-4.5\", \"detail\": \"provider=openai_compat model=minicpm-v-4.5\"}"
+    },
+    {
+      "name": "provider_contract_live",
+      "ok": false,
+      "duration_ms": 120294,
+      "detail": "exception: "
+    }
+  ]
+}

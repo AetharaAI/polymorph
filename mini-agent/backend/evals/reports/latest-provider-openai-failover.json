@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-03-06T04:26:52.182810+00:00",
+  "passed": 8,
+  "total": 9,
+  "status": "fail",
+  "live_provider": true,
+  "provider": {
+    "configured": true,
+    "provider": "openai+failover",
+    "model": "gpt-5.4",
+    "detail": "provider=openai+failover model=gpt-5.4",
+    "fallbacks": [
+      {
+        "provider": "openai_compat_fallback",
+        "model": "qwen3.5-35b"
+      },
+      {
+        "provider": "litellm_secondary_fallback",
+        "model": "openai/qwen3.5-122"
+      }
+    ]
+  },
+  "results": [
+    {
+      "name": "calculator",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "result=115"
+    },
+    {
+      "name": "shell_allowlist",
+      "ok": false,
+      "duration_ms": 7,
+      "detail": "pwd_ok=True blocked_msg=profile=project workspace=workspaces/default\nstderr: rm: it is dangerous to oper"
+    },
+    {
+      "name": "python_exec",
+      "ok": true,
+      "duration_ms": 11,
+      "detail": "Execution time: 0.01s\nWorkspace: workspaces/default\n\n--- stdout ---\n42\n"
+    },
+    {
+      "name": "dispatch_fallback",
+      "ok": true,
+      "duration_ms": 20,
+      "detail": "12"
+    },
+    {
+      "name": "file_roundtrip",
+      "ok": true,
+      "duration_ms": 1,
+      "detail": "file_id=88aafdecb0b25ed2 validation=valid"
+    },
+    {
+      "name": "artifact_validation",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"status\": \"invalid\", \"kind\": \"csv\", \"valid\": false, \"warnings\": [\"CSV row width mismatch. Expected 3 columns; mismatched rows include: [2]\"]}"
+    },
+    {
+      "name": "provider_config",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"configured\": true, \"provider\": \"openai+failover\", \"model\": \"gpt-5.4\", \"detail\": \"provider=openai+failover model=gpt-5.4\", \"fallbacks\": [{\"provider\": \"openai_compat_fallback\", \"model\": \"qwen3.5-35b\"}, {\"provider\": \"litellm_secondary_fallback\", \"model\": \"openai/qwen3.5-122\"}]}"
+    },
+    {
+      "name": "provider_contract_live",
+      "ok": true,
+      "duration_ms": 832,
+      "detail": "stop_reason=end_turn text=OK thinking="
+    },
+    {
+      "name": "provider_failover_live",
+      "ok": true,
+      "duration_ms": 1267,
+      "detail": "provider=explicit_live_fallback fallback_used=True text=OK"
+    }
+  ]
+}

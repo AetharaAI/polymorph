@@ -1,0 +1,234 @@
+version: 1
+generated_at: "2026-03-13"
+purpose: >
+  Operator-safe action manifest. Defines what Polymorph may inspect or operate on,
+  and where. All actions are deny-by-default outside declared scopes.
+
+policy:
+  default_mode: deny
+  destructive_actions_require_explicit_approval: true
+  allow_only_declared_paths: true
+  notes:
+    - "No recursive deletes."
+    - "No package installs unless explicitly approved."
+    - "No firewall changes unless explicitly approved."
+    - "No service restarts unless explicitly approved."
+
+safe_actions:
+  gpu-status:
+    description: "Inspect GPU state and utilization."
+    commands:
+      - "nvidia-smi"
+      - "nvidia-smi topo -m"
+    destructive: false
+
+  disk-status:
+    description: "Inspect disk, inode, and mount status."
+    commands:
+      - "df -h"
+      - "df -i"
+      - "lsblk"
+      - "mount"
+    destructive: false
+
+  docker-ps:
+    description: "Inspect running containers and compose services."
+    commands:
+      - "docker ps -a"
+      - "docker compose ls"
+    destructive: false
+
+  model-locate:
+    description: "Locate model directories/files under declared model roots only."
+    commands:
+      - "find"
+    destructive: false
+
+  model-download:
+    description: "Download models only into approved cache/model roots."
+    commands:
+      - "huggingface-cli download"
+      - "python"
+      - "uv"
+    destructive: false
+    requires_explicit_approval: true
+
+  compose-validate:
+    description: "Validate compose configuration without starting services."
+    commands:
+      - "docker compose config"
+    destructive: false
+
+  stack-stop:
+    description: "Stop declared stacks only."
+    commands:
+      - "docker compose down"
+      - "docker compose stop"
+    destructive: true
+    requires_explicit_approval: true
+
+  stack-start:
+    description: "Start declared stacks only."
+    commands:
+      - "docker compose up -d"
+      - "docker compose start"
+    destructive: false
+    requires_explicit_approval: true
+
+  stack-health:
+    description: "Check declared stacks and service health."
+    commands:
+      - "docker compose ps"
+      - "docker inspect"
+      - "curl"
+    destructive: false
+
+nodes:
+  l40s-180:
+    host_alias: l40s-180-us-west-or-1
+    ssh_user: poly
+    approved_paths:
+      model_roots:
+        - /mnt/aetherpro/models
+        - /mnt/aetherpro-extra1/models
+        - /mnt/aetherpro-extra1/llms
+        - /mnt/aetherpro-extra2/models
+      cache_roots:
+        - /mnt/aetherpro/hf
+        - /mnt/aetherpro/hf-cache
+        - /mnt/aetherpro-extra1/hf-cache
+        - /mnt/aetherpro-extra2/hf
+        - /mnt/aetherpro-extra2/pip_cache
+        - /mnt/aetherpro-extra2/uv_cache
+      compose_roots:
+        - ~/aether-model-node/control
+      read_only_roots:
+        - /mnt/aetherpro
+        - /mnt/aetherpro-extra1
+        - /mnt/aetherpro-extra2
+    action_map:
+      gpu-status:
+        allowed_paths: []
+      disk-status:
+        allowed_paths:
+          - /
+          - /mnt/aetherpro
+          - /mnt/aetherpro-extra1
+          - /mnt/aetherpro-extra2
+      docker-ps:
+        allowed_paths:
+          - ~/aether-model-node/control
+      model-locate:
+        allowed_paths:
+          - /mnt/aetherpro/models
+          - /mnt/aetherpro-extra1/models
+          - /mnt/aetherpro-extra1/llms
+          - /mnt/aetherpro-extra2/models
+      model-download:
+        allowed_paths:
+          - /mnt/aetherpro-extra1/models
+          - /mnt/aetherpro-extra1/llms
+          - /mnt/aetherpro-extra2/models
+          - /mnt/aetherpro-extra1/hf-cache
+          - /mnt/aetherpro-extra2/hf
+      compose-validate:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-stop:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-start:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-health:
+        allowed_paths:
+          - ~/aether-model-node/control
+
+  l4-360:
+    host_alias: l4-360-us-west-or-1
+    ssh_user: poly
+    approved_paths:
+      model_roots:
+        - /mnt/aetherpro/models
+      cache_roots:
+        - /mnt/aetherpro/cache
+        - /mnt/aetherpro/hf-cache
+      compose_roots:
+        - ~/aether-model-node/control
+      read_only_roots:
+        - /mnt/aetherpro
+    action_map:
+      gpu-status:
+        allowed_paths: []
+      disk-status:
+        allowed_paths:
+          - /
+          - /mnt/aetherpro
+      docker-ps:
+        allowed_paths:
+          - ~/aether-model-node/control
+      model-locate:
+        allowed_paths:
+          - /mnt/aetherpro/models
+      model-download:
+        allowed_paths:
+          - /mnt/aetherpro/models
+          - /mnt/aetherpro/hf-cache
+      compose-validate:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-stop:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-start:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-health:
+        allowed_paths:
+          - ~/aether-model-node/control
+
+  l40s-90:
+    host_alias: l40s-90-us-west-or-1
+    ssh_user: poly
+    approved_paths:
+      model_roots:
+        - /mnt/aetherpro/models
+        - /mnt/aetherpro/llm
+      cache_roots:
+        - /mnt/aetherpro/cache
+        - /mnt/aetherpro/hf
+      compose_roots:
+        - ~/aether-model-node/control
+      read_only_roots:
+        - /mnt/aetherpro
+    action_map:
+      gpu-status:
+        allowed_paths: []
+      disk-status:
+        allowed_paths:
+          - /
+          - /mnt/aetherpro
+      docker-ps:
+        allowed_paths:
+          - ~/aether-model-node/control
+      model-locate:
+        allowed_paths:
+          - /mnt/aetherpro/models
+          - /mnt/aetherpro/llm
+      model-download:
+        allowed_paths:
+          - /mnt/aetherpro/models
+          - /mnt/aetherpro/llm
+          - /mnt/aetherpro/hf
+      compose-validate:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-stop:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-start:
+        allowed_paths:
+          - ~/aether-model-node/control
+      stack-health:
+        allowed_paths:
+          - ~/aether-model-node/control

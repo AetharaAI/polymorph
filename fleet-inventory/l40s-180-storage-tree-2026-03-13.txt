@@ -1,0 +1,172 @@
+L40S-180 Block Storage File Tree
+Host: l40s-180-us-west-or-1
+Captured: manual directory walk via SSH
+Purpose: storage inventory for model placement, maintenance, and agent access planning
+
+Storage Roots
+=============
+/mnt/aetherpro
+/mnt/aetherpro-extra1
+/mnt/aetherpro-extra2
+
+
+1) /mnt/aetherpro
+=================
+
+/mnt/aetherpro
+├── cache/
+├── hf/
+├── hf-cache/
+├── models/
+│   └── vision/
+│       └── Qwen3-VL-30B-Thinking/
+└── torch/
+
+
+2) /mnt/aetherpro-extra1
+========================
+
+/mnt/aetherpro-extra1
+├── hf-cache/
+├── llms/
+│   ├── Qwen3/
+│   │   ├── Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit/
+│   │   ├── SERA-32BAWQ-4bit/
+│   │   └── cyankiwi/
+│   │       └── Qwen3-Next-80B-A3B-Instruct-AWQ-4bit/
+│   ├── core/
+│   │   └── [empty at time of capture]
+│   ├── vision/
+│   │   └── moonshotai/
+│   │       └── Kimi-VL-A3B-Thinking-2506/
+│   │           ├── .cache/
+│   │           ├── .gitattributes
+│   │           ├── README.md
+│   │           ├── chat_template.jinja
+│   │           ├── config.json
+│   │           ├── configuration_kimi_vl.py
+│   │           ├── figures/
+│   │           ├── generation_config.json
+│   │           ├── image_processing_kimi_vl.py
+│   │           ├── model-00001-of-00007.safetensors
+│   │           ├── model-00002-of-00007.safetensors
+│   │           ├── model-00003-of-00007.safetensors
+│   │           ├── model-00004-of-00007.safetensors
+│   │           ├── model-00005-of-00007.safetensors
+│   │           ├── model-00006-of-00007.safetensors
+│   │           ├── model-00007-of-00007.safetensors
+│   │           ├── model.safetensors.index.json
+│   │           ├── modeling_kimi_vl.py
+│   │           ├── modules/
+│   │           ├── preprocessor_config.json
+│   │           ├── processing_kimi_vl.py
+│   │           ├── tiktoken.model
+│   │           ├── tokenization_moonshot.py
+│   │           └── tokenizer_config.json
+│   └── voice/
+│       └── canopylabs/
+│           └── orpheus-3b-0.1-ft/
+├── lost+found/
+└── models/
+    └── vision/
+        └── Qwen3.5-122B-A10B-AWQ-4bit/
+
+
+3) /mnt/aetherpro-extra2
+========================
+
+/mnt/aetherpro-extra2
+├── hf/
+├── lost+found/
+├── models/
+│   └── llm/
+│       └── Kimi-K2.5/
+│           ├── .cache/
+│           ├── .gitattributes
+│           ├── LICENSE
+│           ├── README.md
+│           ├── THIRD_PARTY_NOTICES.md
+│           ├── chat_template.jinja
+│           ├── config.json
+│           ├── configuration_deepseek.py
+│           ├── configuration_kimi_k25.py
+│           ├── docs/
+│           ├── figures/
+│           ├── generation_config.json
+│           ├── kimi_k25_processor.py
+│           ├── kimi_k25_vision_processing.py
+│           ├── media_utils.py
+│           ├── model-00001-of-000064.safetensors
+│           ├── model-00002-of-000064.safetensors
+│           ├── model-00003-of-000064.safetensors
+│           ├── model-00004-of-000064.safetensors
+│           ├── model-00005-of-000064.safetensors
+│           ├── model-00006-of-000064.safetensors
+│           ├── model-00007-of-000064.safetensors
+│           ├── model-00008-of-000064.safetensors
+│           ├── model-00009-of-000064.safetensors
+│           ├── model-00010-of-000064.safetensors
+│           ├── model-00011-of-000064.safetensors
+│           ├── model-00012-of-000064.safetensors
+│           ├── model-00013-of-000064.safetensors
+│           ├── model-00014-of-000064.safetensors
+│           ├── model-00015-of-000064.safetensors
+│           ├── model-00016-of-000064.safetensors
+│           ├── model-00017-of-000064.safetensors
+│           ├── model-00018-of-000064.safetensors
+│           ├── model-00019-of-000064.safetensors
+│           ├── model-00020-of-000064.safetensors
+│           ├── model-00021-of-000064.safetensors
+│           ├── model-00022-of-000064.safetensors
+│           ├── model-00023-of-000064.safetensors
+│           ├── model-00024-of-000064.safetensors
+│           ├── model-00025-of-000064.safetensors
+│           ├── model-00026-of-000064.safetensors
+│           ├── model-00027-of-000064.safetensors
+│           ├── model-00028-of-000064.safetensors
+│           ├── model-00029-of-000064.safetensors
+│           ├── model-00030-of-000064.safetensors
+│           ├── model-00031-of-000064.safetensors
+│           ├── model-00032-of-000064.safetensors
+│           ├── model-00033-of-000064.safetensors
+│           ├── model-00034-of-000064.safetensors
+│           ├── model-00035-of-000064.safetensors
+│           ├── model-00036-of-000064.safetensors
+│           ├── model-00037-of-000064.safetensors
+│           ├── model-00038-of-000064.safetensors
+│           ├── model-00039-of-000064.safetensors
+│           ├── model-00040-of-000064.safetensors
+│           ├── model-00041-of-000064.safetensors
+│           ├── model-00042-of-000064.safetensors
+│           ├── model-00043-of-000064.safetensors
+│           ├── model-00044-of-000064.safetensors
+│           ├── model-00045-of-000064.safetensors
+│           ├── model-00046-of-000064.safetensors
+│           ├── model-00047-of-000064.safetensors
+│           ├── model-00048-of-000064.safetensors
+│           ├── model-00049-of-000064.safetensors
+│           ├── model-00050-of-000064.safetensors
+│           ├── model-00051-of-000064.safetensors
+│           ├── model-00052-of-000064.safetensors
+│           ├── model-00053-of-000064.safetensors
+│           ├── model-00054-of-000064.safetensors
+│           ├── model-00055-of-000064.safetensors
+│           ├── model-00056-of-000064.safetensors
+│           ├── model-00057-of-000064.safetensors
+│           ├── model-00058-of-000064.safetensors
+│           ├── model-00059-of-000064.safetensors
+│           ├── model-00060-of-000064.safetensors
+│           ├── model-00061-of-000064.safetensors
+│           ├── model-00062-of-000064.safetensors
+│           ├── model-00063-of-000064.safetensors
+│           ├── model-00064-of-000064.safetensors
+│           ├── model.safetensors.index.json
+│           ├── modeling_deepseek.py
+│           ├── modeling_kimi_k25.py
+│           ├── preprocessor_config.json
+│           ├── tiktoken.model
+│           ├── tokenization_kimi.py
+│           ├── tokenizer_config.json
+│           └── tool_declaration_ts.py
+├── pip_cache/
+└── uv_cache/

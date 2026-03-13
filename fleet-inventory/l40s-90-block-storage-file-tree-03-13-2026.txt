@@ -1,0 +1,89 @@
+L40S-90
+├── ~/
+│   ├── Neuro-Symbiotic/
+│   ├── aether-model-node/
+│   │   └── control/
+│   │       ├── .env
+│   │       ├── config.yaml
+│   │       ├── docker-compose.yml
+│   │       ├── litellm/
+│   │       │   ├── .env
+│   │       │   ├── aether-data/
+│   │       │   ├── config.bak
+│   │       │   ├── config.yaml
+│   │       │   ├── docker-compose.yml
+│   │       │   ├── legacy.config.yml
+│   │       │   └── template-compose.yml
+│   │       └── run-model/
+│   │           ├── .env
+│   │           ├── .mnt/
+│   │           ├── docker-compose.yml
+│   │           ├── docker-compose.yml-first
+│   │           ├── dual-qwen/
+│   │           │   ├── Dockerfile.qwen35
+│   │           │   ├── docker-compose.yml
+│   │           │   └── logs/
+│   │           ├── jan-qwen/
+│   │           ├── mini-nan/
+│   │           │   ├── .env
+│   │           │   └── docker-compose.yml
+│   │           ├── mnt/
+│   │           ├── phi4/
+│   │           └── qwen3.5/
+│   │               ├── Dockerfile.qwen35
+│   │               ├── docker-compose.yml
+│   │               ├── dual-compose.yml
+│   │               └── logs/
+│   ├── apriel-h1/
+│   ├── hf-cache/
+│   ├── get-docker.sh
+│   └── old-nginx
+│
+└── /mnt/aetherpro/
+    ├── cache/
+    ├── hf/
+    ├── llm/
+    │   ├── agent-cpm/
+    │   └── qwen3/
+    ├── lost+found/
+    └── models/
+        ├── cyankiwi/
+        │   ├── Jan-code-4b-AWQ-4bit/
+        │   ├── Qwen3.5-35B-A3B-AWQ-4bit/
+        │   ├── Qwen3.5-4B-AWQ-4bit/
+        │   └── Qwen3.5-9B-AWQ-BF16-INT8/
+        ├── llm/
+        │   ├── LFM2.5-1.2B-Thinking/
+        │   ├── Nanbeige/
+        │   ├── apriel/
+        │   ├── april/
+        │   ├── cyankiwi/
+        │   │   └── Qwen3-30B-A3B-Thinking-2507-AWQ-4bit/
+        │   └── mistral/
+        ├── sensors/
+        │   ├── detection/
+        │   │   └── yolo/
+        │   │       └── yolov10l.pt
+        │   ├── ocr/
+        │   │   ├── easyocr/
+        │   │   ├── paddleocr/
+        │   │   └── tesseract/
+        │   ├── pose/
+        │   │   ├── mediapipe/
+        │   │   ├── openpose/
+        │   │   └── yolopose/
+        │   └── tracking/
+        │       ├── bytetrack/
+        │       ├── deepsort/
+        │       └── norfair/
+        ├── vision/
+        │   ├── Kimi-VL-A3B-Thinking-2506/
+        │   └── openbmb/
+        │       ├── MiniCPM-SALA/
+        │       ├── MiniCPM-V-4_5-AWQ/
+        │       └── MiniCPM-o-4_5/
+        └── voice/
+            ├── any-any/
+            │   └── Chroma-4B/
+            └── microsoft/
+                └── Phi-4-multimodal-instruct/

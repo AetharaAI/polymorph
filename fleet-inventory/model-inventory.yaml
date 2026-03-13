@@ -1,0 +1,452 @@
+version: 1
+generated_at: "2026-03-13"
+owner: "AetherPro Technologies"
+purpose: >
+  Canonical node inventory for Polymorph / operator-safe automation.
+  This file records only observed or intentionally documented paths.
+  Unexpanded directories must remain explicitly marked.
+
+path_status_enum:
+  - confirmed
+  - known_root_unexpanded
+  - documented
+
+nodes:
+  - node_name: l40s-180
+    host_alias: l40s-180-us-west-or-1
+    ssh_user: poly
+    notes:
+      - "Split-storage model node"
+      - "Kimi-K2.5 stored on extra2"
+      - "Do not assume mount parity with other nodes"
+    mounts:
+      - path: /mnt/aetherpro
+        status: confirmed
+        kind: block_storage
+        tags: [models, vision, hf-cache, torch]
+        children:
+          - path: /mnt/aetherpro/cache
+            status: documented
+            tags: [cache]
+          - path: /mnt/aetherpro/hf
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro/hf-cache
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro/torch
+            status: documented
+            tags: [torch-cache]
+          - path: /mnt/aetherpro/models
+            status: confirmed
+            tags: [models]
+            children:
+              - path: /mnt/aetherpro/models/vision
+                status: confirmed
+                tags: [models, vision]
+                children:
+                  - path: /mnt/aetherpro/models/vision/Qwen3-VL-30B-Thinking
+                    status: documented
+                    tags: [vision, multimodal, qwen]
+
+      - path: /mnt/aetherpro-extra1
+        status: confirmed
+        kind: block_storage
+        tags: [models, llm, vision, voice, hf-cache]
+        children:
+          - path: /mnt/aetherpro-extra1/hf-cache
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro-extra1/lost+found
+            status: documented
+            tags: [filesystem]
+          - path: /mnt/aetherpro-extra1/models
+            status: confirmed
+            tags: [models]
+            children:
+              - path: /mnt/aetherpro-extra1/models/vision
+                status: confirmed
+                tags: [vision]
+                children:
+                  - path: /mnt/aetherpro-extra1/models/vision/Qwen3.5-122B-A10B-AWQ-4bit
+                    status: documented
+                    tags: [vision, multimodal, qwen, awq]
+          - path: /mnt/aetherpro-extra1/llms
+            status: confirmed
+            tags: [llm]
+            children:
+              - path: /mnt/aetherpro-extra1/llms/Qwen3
+                status: confirmed
+                tags: [llm, qwen]
+                children:
+                  - path: /mnt/aetherpro-extra1/llms/Qwen3/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+                    status: documented
+                    tags: [llm, coder, qwen, awq]
+                  - path: /mnt/aetherpro-extra1/llms/Qwen3/SERA-32BAWQ-4bit
+                    status: documented
+                    tags: [llm, awq]
+                  - path: /mnt/aetherpro-extra1/llms/Qwen3/cyankiwi
+                    status: confirmed
+                    tags: [llm, qwen]
+                    children:
+                      - path: /mnt/aetherpro-extra1/llms/Qwen3/cyankiwi/Qwen3-Next-80B-A3B-Instruct-AWQ-4bit
+                        status: documented
+                        tags: [llm, qwen, awq]
+              - path: /mnt/aetherpro-extra1/llms/core
+                status: confirmed
+                tags: [llm]
+                todo_expansion: "Directory existed but was empty at capture time; confirm if intentionally reserved."
+              - path: /mnt/aetherpro-extra1/llms/vision
+                status: confirmed
+                tags: [vision, multimodal]
+                children:
+                  - path: /mnt/aetherpro-extra1/llms/vision/moonshotai
+                    status: confirmed
+                    tags: [vision, multimodal, moonshot]
+                    children:
+                      - path: /mnt/aetherpro-extra1/llms/vision/moonshotai/Kimi-VL-A3B-Thinking-2506
+                        status: documented
+                        tags: [vision, multimodal, kimi]
+              - path: /mnt/aetherpro-extra1/llms/voice
+                status: confirmed
+                tags: [voice, audio]
+                children:
+                  - path: /mnt/aetherpro-extra1/llms/voice/canopylabs
+                    status: confirmed
+                    tags: [voice, audio]
+                    children:
+                      - path: /mnt/aetherpro-extra1/llms/voice/canopylabs/orpheus-3b-0.1-ft
+                        status: documented
+                        tags: [voice, audio, tts]
+
+      - path: /mnt/aetherpro-extra2
+        status: confirmed
+        kind: block_storage
+        tags: [models, llm, hf-cache, pip-cache, uv-cache]
+        children:
+          - path: /mnt/aetherpro-extra2/hf
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro-extra2/lost+found
+            status: documented
+            tags: [filesystem]
+          - path: /mnt/aetherpro-extra2/pip_cache
+            status: documented
+            tags: [pip-cache]
+          - path: /mnt/aetherpro-extra2/uv_cache
+            status: documented
+            tags: [uv-cache]
+          - path: /mnt/aetherpro-extra2/models
+            status: confirmed
+            tags: [models]
+            children:
+              - path: /mnt/aetherpro-extra2/models/llm
+                status: confirmed
+                tags: [llm]
+                children:
+                  - path: /mnt/aetherpro-extra2/models/llm/Kimi-K2.5
+                    status: documented
+                    tags: [llm, multimodal, kimi]
+
+  - node_name: l4-360
+    host_alias: l4-360-us-west-or-1
+    ssh_user: poly
+    notes:
+      - "Dense mixed model store"
+      - "Strongest audio/TTS/ASR concentration"
+    mounts:
+      - path: /mnt/aetherpro
+        status: confirmed
+        kind: block_storage
+        tags: [models, containers, hf-cache]
+        children:
+          - path: /mnt/aetherpro/cache
+            status: documented
+            tags: [cache]
+          - path: /mnt/aetherpro/containers
+            status: documented
+            tags: [containers]
+          - path: /mnt/aetherpro/hf-cache
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro/lost+found
+            status: documented
+            tags: [filesystem]
+          - path: /mnt/aetherpro/models
+            status: confirmed
+            tags: [models]
+            children:
+              - path: /mnt/aetherpro/models/audio
+                status: confirmed
+                tags: [audio, asr, tts, music]
+                children:
+                  - path: /mnt/aetherpro/models/audio/OpenMOSS-Team
+                    status: confirmed
+                    tags: [audio, tts, sound]
+                    children:
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-Audio-Tokenizer
+                        status: documented
+                        tags: [audio]
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-SoundEffect
+                        status: documented
+                        tags: [audio, sound]
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-TTS
+                        status: documented
+                        tags: [audio, tts]
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-TTS-Realtime
+                        status: documented
+                        tags: [audio, tts, realtime]
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-TTSD-v1.0
+                        status: documented
+                        tags: [audio, tts]
+                      - path: /mnt/aetherpro/models/audio/OpenMOSS-Team/MOSS-VoiceGenerator
+                        status: documented
+                        tags: [audio, voice]
+                  - path: /mnt/aetherpro/models/audio/Qwen/Qwen3-ASR-1.7B
+                    status: documented
+                    tags: [audio, asr, qwen]
+                  - path: /mnt/aetherpro/models/audio/Systran/faster-whisper-large-v3
+                    status: documented
+                    tags: [audio, asr, whisper]
+                  - path: /mnt/aetherpro/models/audio/kokoro
+                    status: documented
+                    tags: [audio, tts, voice]
+                  - path: /mnt/aetherpro/models/audio/mistralai/Voxtral-Mini-4B-Realtime-2602
+                    status: documented
+                    tags: [audio, realtime, voice]
+                  - path: /mnt/aetherpro/models/audio/nvidia/music-flamingo-2601-hf
+                    status: documented
+                    tags: [audio, music]
+                  - path: /mnt/aetherpro/models/audio/personaplex
+                    status: documented
+                    tags: [audio, voice]
+                  - path: /mnt/aetherpro/models/audio/whisper
+                    status: documented
+                    tags: [audio, asr, whisper]
+                  - path: /mnt/aetherpro/models/audio/.locks
+                    status: documented
+                    tags: [lockfiles]
+                  - path: /mnt/aetherpro/models/audio/models--Systran--faster-whisper-base
+                    status: documented
+                    tags: [audio, asr, whisper]
+                  - path: /mnt/aetherpro/models/audio/models--Systran--faster-whisper-large-v3
+                    status: documented
+                    tags: [audio, asr, whisper]
+              - path: /mnt/aetherpro/models/embeddings
+                status: confirmed
+                tags: [embeddings]
+                children:
+                  - path: /mnt/aetherpro/models/embeddings/bge-m3
+                    status: documented
+                    tags: [embeddings]
+              - path: /mnt/aetherpro/models/rerankers
+                status: confirmed
+                tags: [reranker]
+                children:
+                  - path: /mnt/aetherpro/models/rerankers/bge-reranker-v2-m3
+                    status: documented
+                    tags: [reranker]
+              - path: /mnt/aetherpro/models/llm
+                status: confirmed
+                tags: [llm]
+                children:
+                  - path: /mnt/aetherpro/models/llm/Nanbeige/Nanbeige4.1-3B
+                    status: documented
+                    tags: [llm]
+                  - path: /mnt/aetherpro/models/llm/cyankiwi/MiniMax-M2.5-REAP-139B-A10B-AWQ-4bit
+                    status: documented
+                    tags: [llm, awq]
+                  - path: /mnt/aetherpro/models/llm/prithivMLmods/Qwen3-VL-8B-Instruct-Unredacted-MAX
+                    status: documented
+                    tags: [llm, vision, multimodal, qwen]
+              - path: /mnt/aetherpro/models/vision
+                status: confirmed
+                tags: [vision, multimodal]
+                children:
+                  - path: /mnt/aetherpro/models/vision/cyankiwi/Qwen3.5-35B-A3B-AWQ-4bit
+                    status: documented
+                    tags: [vision, multimodal, qwen, awq]
+              - path: /mnt/aetherpro/models/redwatchcyankiw
+                status: confirmed
+                tags: [redwatch, security, llm]
+                children:
+                  - path: /mnt/aetherpro/models/redwatchcyankiw/VulnLLM-R-7B-AWQ-8bit
+                    status: documented
+                    tags: [redwatch, security, llm, awq]
+              - path: /mnt/aetherpro/models/redwatch
+                status: known_root_unexpanded
+                tags: [redwatch]
+                todo_expansion: "Expand and enumerate contents."
+              - path: /mnt/aetherpro/models/cache
+                status: known_root_unexpanded
+                tags: [cache]
+                todo_expansion: "Expand and enumerate contents."
+              - path: /mnt/aetherpro/models/diffusion
+                status: known_root_unexpanded
+                tags: [diffusion]
+                todo_expansion: "Expand and enumerate contents."
+              - path: /mnt/aetherpro/models/voice
+                status: documented
+                tags: [voice]
+                todo_expansion: "Directory existed and appeared empty at capture time; reconfirm later."
+
+  - node_name: l40s-90
+    host_alias: l40s-90-us-west-or-1
+    ssh_user: poly
+    notes:
+      - "Perception-heavy node"
+      - "Control-plane work area exists outside /mnt block storage"
+      - "Directory-level inventory is intentional and valid"
+    mounts:
+      - path: /mnt/aetherpro
+        status: confirmed
+        kind: block_storage
+        tags: [models, llm, vision, voice, sensors, hf-cache]
+        children:
+          - path: /mnt/aetherpro/cache
+            status: documented
+            tags: [cache]
+          - path: /mnt/aetherpro/hf
+            status: documented
+            tags: [hf-cache]
+          - path: /mnt/aetherpro/llm
+            status: confirmed
+            tags: [llm]
+            children:
+              - path: /mnt/aetherpro/llm/agent-cpm
+                status: documented
+                tags: [llm, agent]
+              - path: /mnt/aetherpro/llm/qwen3
+                status: documented
+                tags: [llm, qwen]
+          - path: /mnt/aetherpro/models
+            status: confirmed
+            tags: [models]
+            children:
+              - path: /mnt/aetherpro/models/cyankiwi
+                status: confirmed
+                tags: [llm, vision]
+                children:
+                  - path: /mnt/aetherpro/models/cyankiwi/Jan-code-4b-AWQ-4bit
+                    status: documented
+                    tags: [llm, coder, awq]
+                  - path: /mnt/aetherpro/models/cyankiwi/Qwen3.5-35B-A3B-AWQ-4bit
+                    status: documented
+                    tags: [llm, vision, qwen, awq]
+                  - path: /mnt/aetherpro/models/cyankiwi/Qwen3.5-4B-AWQ-4bit
+                    status: documented
+                    tags: [llm, qwen, awq]
+                  - path: /mnt/aetherpro/models/cyankiwi/Qwen3.5-9B-AWQ-BF16-INT8
+                    status: documented
+                    tags: [llm, qwen, quantized]
+              - path: /mnt/aetherpro/models/llm
+                status: confirmed
+                tags: [llm]
+                children:
+                  - path: /mnt/aetherpro/models/llm/LFM2.5-1.2B-Thinking
+                    status: documented
+                    tags: [llm]
+                  - path: /mnt/aetherpro/models/llm/Nanbeige
+                    status: documented
+                    tags: [llm]
+                  - path: /mnt/aetherpro/models/llm/apriel
+                    status: documented
+                    tags: [llm]
+                  - path: /mnt/aetherpro/models/llm/april
+                    status: documented
+                    tags: [llm]
+                  - path: /mnt/aetherpro/models/llm/cyankiwi/Qwen3-30B-A3B-Thinking-2507-AWQ-4bit
+                    status: documented
+                    tags: [llm, qwen, awq]
+                  - path: /mnt/aetherpro/models/llm/mistral
+                    status: documented
+                    tags: [llm, mistral]
+              - path: /mnt/aetherpro/models/sensors
+                status: confirmed
+                tags: [sensors, perception]
+                children:
+                  - path: /mnt/aetherpro/models/sensors/detection
+                    status: confirmed
+                    tags: [sensors, detection]
+                    children:
+                      - path: /mnt/aetherpro/models/sensors/detection/yolo
+                        status: documented
+                        tags: [sensors, detection, yolo]
+                  - path: /mnt/aetherpro/models/sensors/ocr
+                    status: confirmed
+                    tags: [sensors, ocr]
+                    children:
+                      - path: /mnt/aetherpro/models/sensors/ocr/easyocr
+                        status: documented
+                        tags: [sensors, ocr]
+                      - path: /mnt/aetherpro/models/sensors/ocr/paddleocr
+                        status: documented
+                        tags: [sensors, ocr]
+                      - path: /mnt/aetherpro/models/sensors/ocr/tesseract
+                        status: documented
+                        tags: [sensors, ocr]
+                  - path: /mnt/aetherpro/models/sensors/pose
+                    status: confirmed
+                    tags: [sensors, pose]
+                    children:
+                      - path: /mnt/aetherpro/models/sensors/pose/mediapipe
+                        status: documented
+                        tags: [sensors, pose]
+                      - path: /mnt/aetherpro/models/sensors/pose/openpose
+                        status: documented
+                        tags: [sensors, pose]
+                      - path: /mnt/aetherpro/models/sensors/pose/yolopose
+                        status: documented
+                        tags: [sensors, pose]
+                  - path: /mnt/aetherpro/models/sensors/tracking
+                    status: confirmed
+                    tags: [sensors, tracking]
+                    children:
+                      - path: /mnt/aetherpro/models/sensors/tracking/bytetrack
+                        status: documented
+                        tags: [sensors, tracking]
+                      - path: /mnt/aetherpro/models/sensors/tracking/deepsort
+                        status: documented
+                        tags: [sensors, tracking]
+                      - path: /mnt/aetherpro/models/sensors/tracking/norfair
+                        status: documented
+                        tags: [sensors, tracking]
+              - path: /mnt/aetherpro/models/vision
+                status: confirmed
+                tags: [vision, multimodal]
+                children:
+                  - path: /mnt/aetherpro/models/vision/Kimi-VL-A3B-Thinking-2506
+                    status: documented
+                    tags: [vision, multimodal, kimi]
+                  - path: /mnt/aetherpro/models/vision/openbmb
+                    status: confirmed
+                    tags: [vision, multimodal]
+                    children:
+                      - path: /mnt/aetherpro/models/vision/openbmb/MiniCPM-SALA
+                        status: documented
+                        tags: [vision, multimodal]
+                      - path: /mnt/aetherpro/models/vision/openbmb/MiniCPM-V-4_5-AWQ
+                        status: documented
+                        tags: [vision, multimodal, awq]
+                      - path: /mnt/aetherpro/models/vision/openbmb/MiniCPM-o-4_5
+                        status: documented
+                        tags: [vision, multimodal]
+              - path: /mnt/aetherpro/models/voice
+                status: confirmed
+                tags: [voice, audio]
+                children:
+                  - path: /mnt/aetherpro/models/voice/any-any/Chroma-4B
+                    status: documented
+                    tags: [voice, audio]
+                  - path: /mnt/aetherpro/models/voice/microsoft/Phi-4-multimodal-instruct
+                    status: documented
+                    tags: [voice, multimodal, audio]
+          - path: /mnt/aetherpro/lost+found
+            status: documented
+            tags: [filesystem]
+
+    documented_non_mount_roots:
+      - path: ~/aether-model-node/control
+        status: documented
+        tags: [control-plane, compose, docker]
+        todo_expansion: "Separate from block storage tree; expand only if needed for operator workflows."

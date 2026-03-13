@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-03-06T02:37:22.534571+00:00",
+  "passed": 6,
+  "total": 8,
+  "status": "fail",
+  "live_provider": true,
+  "provider": {
+    "configured": true,
+    "provider": "openai_compat",
+    "model": "gpt-5.4",
+    "detail": "provider=openai_compat model=gpt-5.4"
+  },
+  "results": [
+    {
+      "name": "calculator",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "result=115"
+    },
+    {
+      "name": "shell_allowlist",
+      "ok": false,
+      "duration_ms": 14,
+      "detail": "pwd_ok=True blocked_msg=profile=project workspace=workspaces/default\nstderr: rm: it is dangerous to oper"
+    },
+    {
+      "name": "python_exec",
+      "ok": true,
+      "duration_ms": 10,
+      "detail": "Execution time: 0.01s\nWorkspace: workspaces/default\n\n--- stdout ---\n42\n"
+    },
+    {
+      "name": "dispatch_fallback",
+      "ok": true,
+      "duration_ms": 17,
+      "detail": "12"
+    },
+    {
+      "name": "file_roundtrip",
+      "ok": true,
+      "duration_ms": 1,
+      "detail": "file_id=28e17c1f02b8fea2 validation=valid"
+    },
+    {
+      "name": "artifact_validation",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"status\": \"invalid\", \"kind\": \"csv\", \"valid\": false, \"warnings\": [\"CSV row width mismatch. Expected 3 columns; mismatched rows include: [2]\"]}"
+    },
+    {
+      "name": "provider_config",
+      "ok": true,
+      "duration_ms": 0,
+      "detail": "{\"configured\": true, \"provider\": \"openai_compat\", \"model\": \"gpt-5.4\", \"detail\": \"provider=openai_compat model=gpt-5.4\"}"
+    },
+    {
+      "name": "provider_contract_live",
+      "ok": false,
+      "duration_ms": 257,
+      "detail": "exception[HTTPStatusError]: Client error '401 Unauthorized' for url 'https://api.openai.com/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401"
+    }
+  ]
+}
