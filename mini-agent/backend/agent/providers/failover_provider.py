@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Awaitable, Callable
 
 from backend.agent.providers.base import BaseLLMProvider, LLMContentBlock, LLMResponse
@@ -63,6 +64,19 @@ class FailoverProvider(BaseLLMProvider):
         primary = self._providers[0]
 
         for idx, provider in enumerate(self._providers):
+            print(
+                "[ProviderFailover] "
+                + json.dumps(
+                    {
+                        "event": "attempt_start",
+                        "attempt": idx + 1,
+                        "provider": provider.provider_name,
+                        "model": provider.model_name,
+                        "lane": "primary" if idx == 0 else "fallback",
+                    },
+                    ensure_ascii=False,
+                )
+            )
             try:
                 response = await provider.generate(
                     system=system,
@@ -80,6 +94,20 @@ class FailoverProvider(BaseLLMProvider):
                 response.model_name = response.model_name or provider.model_name
 
                 if idx > 0:
+                    print(
+                        "[ProviderFailover] "
+                        + json.dumps(
+                            {
+                                "event": "fallback_served",
+                                "attempt": idx + 1,
+                                "primary_provider": primary.provider_name,
+                                "primary_model": primary.model_name,
+                                "fallback_provider": provider.provider_name,
+                                "fallback_model": provider.model_name,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
                     response.fallback_used = True
                     failure_note = failures[-1] if failures else "primary provider failed"
                     response.notice = (
@@ -94,6 +122,20 @@ class FailoverProvider(BaseLLMProvider):
                     raise RuntimeError(
                         f"{provider_lane} {provider.provider_name}:{provider.model_name} rejected the request due to context-window limits. {exc}"
                     ) from exc
+                print(
+                    "[ProviderFailover] "
+                    + json.dumps(
+                        {
+                            "event": "attempt_failed",
+                            "attempt": idx + 1,
+                            "provider": provider.provider_name,
+                            "model": provider.model_name,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:600],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
                 failures.append(f"{provider.provider_name}:{provider.model_name} -> {type(exc).__name__}: {exc}")
                 continue
 

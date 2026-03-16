@@ -104,46 +104,29 @@ def build_tools_prompt_block(
     tool_definitions: list[dict[str, Any]],
     loaded_tool_names: list[str] | None = None,
 ) -> str:
-    manifest = load_tool_manifest()
-    front = manifest.get("front_matter", {})
-    loading_instruction = _compact_description(front.get("loading_instruction") or "", limit=240)
     by_name = _defs_by_name(tool_definitions)
     loaded = [name for name in (loaded_tool_names or []) if name in by_name]
 
     lines = ["## Tools Bootstrap"]
-    if loading_instruction:
-        lines.append(f"- {loading_instruction}")
-
     core_names = core_tool_names()
     if core_names:
-        lines.append("- Core tools available now:")
-        for name in core_names:
-            tool = by_name.get(name)
-            if tool:
-                lines.append(f"  - `{name}`: {_compact_description(tool.get('description', ''))}")
+        lines.append(f"- Core tools callable now: {', '.join(f'`{name}`' for name in core_names if name in by_name)}")
+
+    lines.append("- Dynamic tools are schema-gated. To use one, call `read_tool_schema` with the exact tool name first.")
 
     groups = dynamic_tool_groups()
     if groups:
-        lines.append("- Dynamic tool groups available on demand via `read_tool_schema`:")
+        lines.append("- Dynamic tool catalog:")
         for group_name, payload in groups.items():
             if not isinstance(payload, dict):
                 continue
-            when_to_use = _compact_description(payload.get("when_to_use") or "", limit=120)
             tools = [f"`{name}`" for name in payload.get("tools") or [] if name in by_name]
             if not tools:
                 continue
-            if when_to_use:
-                lines.append(f"  - {group_name}: {', '.join(tools)}")
-                lines.append(f"    use when: {when_to_use}")
-            else:
-                lines.append(f"  - {group_name}: {', '.join(tools)}")
+            lines.append(f"  - {group_name}: {', '.join(tools)}")
 
     if loaded:
-        lines.append("- Schemas already loaded this session:")
-        for name in loaded:
-            tool = by_name.get(name)
-            if tool:
-                lines.append(f"  - `{name}`: {_compact_description(tool.get('description', ''))}")
+        lines.append(f"- Schemas already loaded this session: {', '.join(f'`{name}`' for name in loaded)}")
 
     return "\n".join(lines)
 

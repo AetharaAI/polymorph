@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
+import uuid
 from typing import Any, Awaitable, Callable
 
 AUDIO_SUPPORT_ERROR_HINTS = (
@@ -123,6 +125,8 @@ class OpenAICompatProvider(BaseLLMProvider):
             or _env_optional_int("MODEL_CONTEXT_WINDOW")
         )
         self._learned_context_window: int | None = None
+        self._log_requests = os.getenv("OPENAI_COMPAT_LOG_REQUESTS", "true").strip().lower() in {"1", "true", "yes", "on"}
+        self._log_full_payload = os.getenv("OPENAI_COMPAT_LOG_FULL_PAYLOAD", "false").strip().lower() in {"1", "true", "yes", "on"}
 
     @property
     def provider_name(self) -> str:
@@ -477,6 +481,35 @@ class OpenAICompatProvider(BaseLLMProvider):
             serialized = str(probe)
         return max(1, len(serialized) // 4)
 
+    def _log_request_event(self, event: str, payload: dict[str, Any]) -> None:
+        if not self._log_requests:
+            return
+        record = {
+            "event": event,
+            "provider": self.provider_name,
+            "configured_model": self.model_name,
+            **payload,
+        }
+        try:
+            line = json.dumps(record, ensure_ascii=False, default=str)
+        except Exception:
+            line = str(record)
+        print(f"[ProviderCall] {line}")
+
+    def _log_payload_preview(self, request_id: str, payload: dict[str, Any]) -> None:
+        if not self._log_full_payload:
+            return
+        self._log_request_event(
+            "request_payload",
+            {
+                "request_id": request_id,
+                "payload": payload,
+            },
+        )
+
+    def _request_lane(self) -> str:
+        return "fallback" if "fallback" in self.provider_name.lower() else "primary"
+
     def _preflight_adjust_max_tokens(self, payload: dict[str, Any], requested_max_tokens: int) -> int:
         context_window = self._effective_context_window(requested_max_tokens)
         if not context_window:
@@ -636,9 +669,13 @@ class OpenAICompatProvider(BaseLLMProvider):
         enable_thinking: bool | None = None,
         on_stream_event: Callable[[LLMContentBlock], Awaitable[None]] | None = None,
     ) -> LLMResponse:
+        request_id = uuid.uuid4().hex[:12]
+        started_at = time.perf_counter()
+        terminal_logged = False
         direct_audio = self._messages_contain_direct_audio(messages)
         request_max_retries = 0 if direct_audio else self._max_retries
         allow_no_tool_fallback = self._allow_no_tool_fallback and not direct_audio
+        requested_max_tokens = max_tokens
 
         payload: dict[str, Any] = {
             "model": self._model_name,
@@ -689,6 +726,34 @@ class OpenAICompatProvider(BaseLLMProvider):
                 max_tokens = adjusted_max_tokens
                 self._set_max_tokens_payload(payload, max_tokens)
 
+        estimated_input_tokens = self._estimate_payload_input_tokens(payload)
+        effective_context_window = self._effective_context_window(max_tokens)
+        self._log_request_event(
+            "request_start",
+            {
+                "request_id": request_id,
+                "lane": self._request_lane(),
+                "base_url": self._base_url,
+                "endpoint": "/chat/completions",
+                "requested_model": self._model_name,
+                "direct_openai": self._is_direct_openai(),
+                "direct_audio": direct_audio,
+                "stream_requested": self._stream_enabled and on_stream_event is not None,
+                "message_count": len(payload.get("messages") or []),
+                "tool_count": len(payload.get("tools") or []),
+                "system_chars": len(system or ""),
+                "message_chars": len(json.dumps(payload.get("messages") or [], ensure_ascii=False)),
+                "estimated_input_tokens": estimated_input_tokens,
+                "effective_context_window": effective_context_window,
+                "requested_max_tokens": requested_max_tokens,
+                "sent_max_tokens": max_tokens,
+                "temperature": temperature,
+                "enable_thinking": resolved_enable_thinking,
+                "request_max_retries": request_max_retries,
+            },
+        )
+        self._log_payload_preview(request_id, payload)
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -701,173 +766,206 @@ class OpenAICompatProvider(BaseLLMProvider):
             read=self._read_timeout,
             write=self._write_timeout,
         )
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            if self._stream_enabled and on_stream_event is not None:
-                stream_error_status: tuple[int, str] | None = None
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                if self._stream_enabled and on_stream_event is not None:
+                    stream_error_status: tuple[int, str] | None = None
 
-                for attempt in range(request_max_retries + 1):
-                    stream_payload = dict(payload)
-                    stream_payload["stream"] = True
-                    stream_payload.setdefault("stream_options", {"include_usage": True})
+                    for attempt in range(request_max_retries + 1):
+                        stream_payload = dict(payload)
+                        stream_payload["stream"] = True
+                        stream_payload.setdefault("stream_options", {"include_usage": True})
 
-                    content_parts: list[str] = []
-                    reasoning_parts: list[str] = []
-                    tool_calls: dict[int, dict[str, str]] = {}
-                    emitted_tool_ids: set[str] = set()
-                    usage_data: dict[str, Any] = {}
-                    finish_reason = "stop"
-                    stream_error_status = None
+                        content_parts: list[str] = []
+                        reasoning_parts: list[str] = []
+                        tool_calls: dict[int, dict[str, str]] = {}
+                        emitted_tool_ids: set[str] = set()
+                        usage_data: dict[str, Any] = {}
+                        finish_reason = "stop"
+                        stream_error_status = None
+                        upstream_model = self.model_name
 
-                    try:
-                        async with client.stream(
-                            "POST",
-                            f"{self._base_url}/chat/completions",
-                            headers=headers,
-                            json=stream_payload,
-                        ) as resp:
-                            if resp.status_code >= 400:
-                                body_text = (await resp.aread()).decode("utf-8", errors="replace")
-                                adjusted_max_tokens = self._context_retry_max_tokens(body_text, max_tokens)
-                                if adjusted_max_tokens is not None:
-                                    max_tokens = adjusted_max_tokens
-                                    self._set_max_tokens_payload(payload, max_tokens)
-                                    continue
-                                if resp.status_code >= 500 and attempt < request_max_retries:
-                                    continue
-                                stream_error_status = (resp.status_code, body_text[:4000])
-                                break
-
-                            async for raw_line in resp.aiter_lines():
-                                line = (raw_line or "").strip()
-                                if not line or line.startswith(":"):
-                                    continue
-                                if not line.startswith("data:"):
-                                    continue
-
-                                data_str = line[5:].strip()
-                                if data_str == "[DONE]":
+                        try:
+                            async with client.stream(
+                                "POST",
+                                f"{self._base_url}/chat/completions",
+                                headers=headers,
+                                json=stream_payload,
+                            ) as resp:
+                                if resp.status_code >= 400:
+                                    body_text = (await resp.aread()).decode("utf-8", errors="replace")
+                                    adjusted_max_tokens = self._context_retry_max_tokens(body_text, max_tokens)
+                                    if adjusted_max_tokens is not None:
+                                        self._log_request_event(
+                                            "request_context_retry",
+                                            {
+                                                "request_id": request_id,
+                                                "status_code": resp.status_code,
+                                                "previous_max_tokens": max_tokens,
+                                                "adjusted_max_tokens": adjusted_max_tokens,
+                                                "body_preview": body_text[:600],
+                                            },
+                                        )
+                                        max_tokens = adjusted_max_tokens
+                                        self._set_max_tokens_payload(payload, max_tokens)
+                                        continue
+                                    if resp.status_code >= 500 and attempt < request_max_retries:
+                                        continue
+                                    stream_error_status = (resp.status_code, body_text[:4000])
                                     break
 
-                                try:
-                                    chunk = json.loads(data_str)
-                                except Exception:
-                                    continue
-
-                                if isinstance(chunk.get("usage"), dict):
-                                    usage_data = chunk["usage"]
-
-                                choices = chunk.get("choices") or []
-                                if not choices:
-                                    continue
-
-                                choice0 = choices[0] or {}
-                                delta = choice0.get("delta") or {}
-                                if choice0.get("finish_reason"):
-                                    finish_reason = str(choice0.get("finish_reason") or finish_reason)
-
-                                reasoning_delta = delta.get("reasoning_content") or delta.get("reasoning")
-                                if isinstance(reasoning_delta, str) and reasoning_delta:
-                                    reasoning_parts.append(reasoning_delta)
-                                    await on_stream_event(LLMContentBlock(type="thinking", thinking=reasoning_delta))
-
-                                content_delta = delta.get("content")
-                                if isinstance(content_delta, str) and content_delta:
-                                    content_parts.append(content_delta)
-
-                                for tool_delta in delta.get("tool_calls") or []:
-                                    if not isinstance(tool_delta, dict):
+                                async for raw_line in resp.aiter_lines():
+                                    line = (raw_line or "").strip()
+                                    if not line or line.startswith(":"):
                                         continue
-                                    idx = int(tool_delta.get("index") or 0)
-                                    slot = tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
-                                    if tool_delta.get("id"):
-                                        slot["id"] = str(tool_delta["id"])
+                                    if not line.startswith("data:"):
+                                        continue
 
-                                    fn = tool_delta.get("function") or {}
-                                    if isinstance(fn, dict):
-                                        if fn.get("name"):
-                                            slot["name"] = str(fn["name"])
-                                        if fn.get("arguments"):
-                                            slot["arguments"] += str(fn["arguments"])
+                                    data_str = line[5:].strip()
+                                    if data_str == "[DONE]":
+                                        break
 
-                                    if slot["id"] and slot["name"] and slot["id"] not in emitted_tool_ids:
-                                        emitted_tool_ids.add(slot["id"])
-                                        await on_stream_event(
-                                            LLMContentBlock(
-                                                type="tool_use",
-                                                id=slot["id"],
-                                                name=slot["name"],
-                                                input={},
+                                    try:
+                                        chunk = json.loads(data_str)
+                                    except Exception:
+                                        continue
+
+                                    if isinstance(chunk.get("usage"), dict):
+                                        usage_data = chunk["usage"]
+                                    upstream_model = str(chunk.get("model") or "") or self.model_name
+
+                                    choices = chunk.get("choices") or []
+                                    if not choices:
+                                        continue
+
+                                    choice0 = choices[0] or {}
+                                    delta = choice0.get("delta") or {}
+                                    if choice0.get("finish_reason"):
+                                        finish_reason = str(choice0.get("finish_reason") or finish_reason)
+
+                                    reasoning_delta = delta.get("reasoning_content") or delta.get("reasoning")
+                                    if isinstance(reasoning_delta, str) and reasoning_delta:
+                                        reasoning_parts.append(reasoning_delta)
+                                        await on_stream_event(LLMContentBlock(type="thinking", thinking=reasoning_delta))
+
+                                    content_delta = delta.get("content")
+                                    if isinstance(content_delta, str) and content_delta:
+                                        content_parts.append(content_delta)
+
+                                    for tool_delta in delta.get("tool_calls") or []:
+                                        if not isinstance(tool_delta, dict):
+                                            continue
+                                        idx = int(tool_delta.get("index") or 0)
+                                        slot = tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                                        if tool_delta.get("id"):
+                                            slot["id"] = str(tool_delta["id"])
+
+                                        fn = tool_delta.get("function") or {}
+                                        if isinstance(fn, dict):
+                                            if fn.get("name"):
+                                                slot["name"] = str(fn["name"])
+                                            if fn.get("arguments"):
+                                                slot["arguments"] += str(fn["arguments"])
+
+                                        if slot["id"] and slot["name"] and slot["id"] not in emitted_tool_ids:
+                                            emitted_tool_ids.add(slot["id"])
+                                            await on_stream_event(
+                                                LLMContentBlock(
+                                                    type="tool_use",
+                                                    id=slot["id"],
+                                                    name=slot["name"],
+                                                    input={},
+                                                )
                                             )
+
+                                blocks = self._build_blocks_from_message(
+                                    {
+                                        "content": "".join(content_parts),
+                                        "reasoning_content": "".join(reasoning_parts),
+                                        "tool_calls": [
+                                            {
+                                                "id": tool_calls[idx]["id"],
+                                                "function": {
+                                                    "name": tool_calls[idx]["name"],
+                                                    "arguments": tool_calls[idx]["arguments"] or "{}",
+                                                },
+                                            }
+                                            for idx in sorted(tool_calls)
+                                        ],
+                                    },
+                                    available_tool_names={str(tool.get("name") or "").strip() for tool in tools},
                                 )
+                                recovered_tool_use = any(block.type == "tool_use" for block in blocks)
+                                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                                self._log_request_event(
+                                    "request_success",
+                                    {
+                                        "request_id": request_id,
+                                        "lane": self._request_lane(),
+                                        "status_code": 200,
+                                        "upstream_model": upstream_model,
+                                        "stop_reason": "tool_use" if (finish_reason in {"tool_calls", "function_call"} or recovered_tool_use) else "end_turn",
+                                        "input_tokens": int(usage_data.get("prompt_tokens") or 0),
+                                        "output_tokens": int(usage_data.get("completion_tokens") or 0),
+                                        "tool_use_count": sum(1 for block in blocks if block.type == "tool_use"),
+                                        "elapsed_ms": elapsed_ms,
+                                    },
+                                )
+                                terminal_logged = True
 
-                            blocks = self._build_blocks_from_message(
-                                {
-                                    "content": "".join(content_parts),
-                                    "reasoning_content": "".join(reasoning_parts),
-                                    "tool_calls": [
-                                        {
-                                            "id": tool_calls[idx]["id"],
-                                            "function": {
-                                                "name": tool_calls[idx]["name"],
-                                                "arguments": tool_calls[idx]["arguments"] or "{}",
-                                            },
-                                        }
-                                        for idx in sorted(tool_calls)
-                                    ],
-                                },
-                                available_tool_names={str(tool.get("name") or "").strip() for tool in tools},
-                            )
-                            recovered_tool_use = any(block.type == "tool_use" for block in blocks)
+                                return LLMResponse(
+                                    stop_reason="tool_use" if (finish_reason in {"tool_calls", "function_call"} or recovered_tool_use) else "end_turn",
+                                    content=blocks,
+                                    usage=LLMUsage(
+                                        input_tokens=int(usage_data.get("prompt_tokens") or 0),
+                                        output_tokens=int(usage_data.get("completion_tokens") or 0),
+                                    ),
+                                    provider_name=self.provider_name,
+                                    model_name=self.model_name,
+                                )
+                        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError):
+                            if attempt >= request_max_retries:
+                                raise
 
-                            return LLMResponse(
-                                stop_reason="tool_use" if (finish_reason in {"tool_calls", "function_call"} or recovered_tool_use) else "end_turn",
-                                content=blocks,
-                                usage=LLMUsage(
-                                    input_tokens=int(usage_data.get("prompt_tokens") or 0),
-                                    output_tokens=int(usage_data.get("completion_tokens") or 0),
-                                ),
-                                provider_name=self.provider_name,
-                                model_name=self.model_name,
-                            )
-                    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError):
-                        if attempt >= request_max_retries:
-                            raise
+                    if (
+                        stream_error_status
+                        and tools
+                        and allow_no_tool_fallback
+                        and not self._is_context_window_error_text(stream_error_status[1])
+                    ):
+                        status_code, body_preview = stream_error_status
+                        fallback_error = f"{status_code}: {body_preview}"
+                        self._log_request_event(
+                            "request_tool_fallback",
+                            {
+                                "request_id": request_id,
+                                "status_code": status_code,
+                                "body_preview": body_preview[:600],
+                                "reason": "upstream_error_without_context_window",
+                            },
+                        )
+                    elif stream_error_status:
+                        self._log_request_event(
+                            "request_error",
+                            {
+                                "request_id": request_id,
+                                "status_code": stream_error_status[0],
+                                "body_preview": stream_error_status[1][:600],
+                                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                            },
+                        )
+                        terminal_logged = True
+                        raise self._normalize_upstream_error(
+                            stream_error_status[0],
+                            stream_error_status[1],
+                            direct_audio=direct_audio,
+                        )
+                # Non-stream path (or stream fallback)
+                request_payload = dict(payload)
+                if fallback_error and tools and allow_no_tool_fallback:
+                    request_payload.pop("tools", None)
+                    request_payload.pop("tool_choice", None)
 
-                if (
-                    stream_error_status
-                    and tools
-                    and allow_no_tool_fallback
-                    and not self._is_context_window_error_text(stream_error_status[1])
-                ):
-                    status_code, body_preview = stream_error_status
-                    fallback_error = f"{status_code}: {body_preview}"
-                elif stream_error_status:
-                    raise self._normalize_upstream_error(
-                        stream_error_status[0],
-                        stream_error_status[1],
-                        direct_audio=direct_audio,
-                    )
-            # Non-stream path (or stream fallback)
-            request_payload = dict(payload)
-            if fallback_error and tools and allow_no_tool_fallback:
-                request_payload.pop("tools", None)
-                request_payload.pop("tool_choice", None)
-
-            resp = await self._post_with_retries(
-                client=client,
-                headers=headers,
-                payload=request_payload,
-                request_max_retries=request_max_retries,
-            )
-
-            if (
-                not direct_audio
-                and resp.status_code == 400
-                and not self._uses_openai_max_completion_tokens()
-                and "max_tokens" in resp.text
-            ):
-                request_payload.pop("max_tokens", None)
-                request_payload["max_completion_tokens"] = max_tokens
                 resp = await self._post_with_retries(
                     client=client,
                     headers=headers,
@@ -875,11 +973,14 @@ class OpenAICompatProvider(BaseLLMProvider):
                     request_max_retries=request_max_retries,
                 )
 
-            if resp.status_code >= 400:
-                adjusted_max_tokens = self._context_retry_max_tokens(resp.text, max_tokens)
-                if adjusted_max_tokens is not None:
-                    self._set_max_tokens_payload(request_payload, adjusted_max_tokens)
-                    max_tokens = adjusted_max_tokens
+                if (
+                    not direct_audio
+                    and resp.status_code == 400
+                    and not self._uses_openai_max_completion_tokens()
+                    and "max_tokens" in resp.text
+                ):
+                    request_payload.pop("max_tokens", None)
+                    request_payload["max_completion_tokens"] = max_tokens
                     resp = await self._post_with_retries(
                         client=client,
                         headers=headers,
@@ -887,31 +988,76 @@ class OpenAICompatProvider(BaseLLMProvider):
                         request_max_retries=request_max_retries,
                     )
 
-            if (
-                resp.status_code >= 400
-                and tools
-                and allow_no_tool_fallback
-                and not fallback_error
-                and not self._is_context_window_error_text(resp.text)
-            ):
-                fallback_error = f"{resp.status_code}: {resp.text[:400]}"
-                payload_no_tools = dict(request_payload)
-                payload_no_tools.pop("tools", None)
-                payload_no_tools.pop("tool_choice", None)
-                resp = await self._post_with_retries(
-                    client=client,
-                    headers=headers,
-                    payload=payload_no_tools,
-                    request_max_retries=request_max_retries,
-                )
+                if resp.status_code >= 400:
+                    adjusted_max_tokens = self._context_retry_max_tokens(resp.text, max_tokens)
+                    if adjusted_max_tokens is not None:
+                        self._log_request_event(
+                            "request_context_retry",
+                            {
+                                "request_id": request_id,
+                                "status_code": resp.status_code,
+                                "previous_max_tokens": max_tokens,
+                                "adjusted_max_tokens": adjusted_max_tokens,
+                                "body_preview": resp.text[:600],
+                            },
+                        )
+                        self._set_max_tokens_payload(request_payload, adjusted_max_tokens)
+                        max_tokens = adjusted_max_tokens
+                        resp = await self._post_with_retries(
+                            client=client,
+                            headers=headers,
+                            payload=request_payload,
+                            request_max_retries=request_max_retries,
+                        )
 
-            if resp.status_code >= 400:
-                raise self._normalize_upstream_error(resp.status_code, resp.text, direct_audio=direct_audio)
-            data = resp.json()
+                if (
+                    resp.status_code >= 400
+                    and tools
+                    and allow_no_tool_fallback
+                    and not fallback_error
+                    and not self._is_context_window_error_text(resp.text)
+                ):
+                    fallback_error = f"{resp.status_code}: {resp.text[:400]}"
+                    payload_no_tools = dict(request_payload)
+                    payload_no_tools.pop("tools", None)
+                    payload_no_tools.pop("tool_choice", None)
+                    resp = await self._post_with_retries(
+                        client=client,
+                        headers=headers,
+                        payload=payload_no_tools,
+                        request_max_retries=request_max_retries,
+                    )
+
+                if resp.status_code >= 400:
+                    self._log_request_event(
+                        "request_error",
+                        {
+                            "request_id": request_id,
+                            "status_code": resp.status_code,
+                            "body_preview": resp.text[:600],
+                            "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                        },
+                    )
+                    terminal_logged = True
+                    raise self._normalize_upstream_error(resp.status_code, resp.text, direct_audio=direct_audio)
+                data = resp.json()
+        except Exception as exc:
+            if not terminal_logged:
+                self._log_request_event(
+                    "request_exception",
+                    {
+                        "request_id": request_id,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:600],
+                        "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                    },
+                )
+            raise
 
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         finish_reason = choice.get("finish_reason") or "stop"
+        upstream_model = str(data.get("model") or "") or self.model_name
         usage_data = data.get("usage") or {}
         usage = LLMUsage(
             input_tokens=int(usage_data.get("prompt_tokens") or 0),
@@ -923,6 +1069,22 @@ class OpenAICompatProvider(BaseLLMProvider):
         )
         recovered_tool_use = any(block.type == "tool_use" for block in blocks)
         stop_reason = "tool_use" if (finish_reason in {"tool_calls", "function_call"} or recovered_tool_use) else "end_turn"
+        self._log_request_event(
+            "request_success",
+            {
+                "request_id": request_id,
+                "lane": self._request_lane(),
+                "status_code": 200,
+                "upstream_model": upstream_model,
+                "stop_reason": stop_reason,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "tool_use_count": sum(1 for block in blocks if block.type == "tool_use"),
+                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                "tool_fallback_used": bool(fallback_error),
+            },
+        )
+        terminal_logged = True
         if fallback_error and blocks:
             blocks.append(
                 LLMContentBlock(

@@ -35,6 +35,12 @@ function formatUptime(seconds: number): string {
 
 export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: StatusBarProps) {
   const [showPanel, setShowPanel] = useState(false);
+  const activeModel = providerHealth?.model || usage?.model || 'PolyMorph';
+  const activeProvider = providerHealth?.provider || usage?.provider || null;
+  const lastReplyDiffers =
+    Boolean(usage?.model) &&
+    Boolean(providerHealth?.model) &&
+    usage?.model !== providerHealth?.model;
   const contextRatio = usage
     ? Math.min(1, usage.context_input_tokens / Math.max(usage.context_window, 1))
     : 0;
@@ -89,11 +95,16 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
             title="Toggle system health panel"
           >
             <Cpu size={12} />
-            {usage?.model || providerHealth?.model || 'PolyMorph'}
+            {activeModel}
           </button>
-          {(usage?.provider || providerHealth?.provider) && (
+          {activeProvider && (
             <span className="text-muted-foreground/90">
-              Provider: {usage?.provider || providerHealth?.provider}
+              Provider: {activeProvider}
+            </span>
+          )}
+          {lastReplyDiffers && (
+            <span className="text-amber-300/90">
+              Last reply: {usage?.model}
             </span>
           )}
           {toolHealth && (

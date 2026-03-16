@@ -44,6 +44,8 @@ SERVICE_SPECS: dict[str, dict[str, Any]] = {
             {"env_key": "OPENAI_COMPAT_MODEL", "label": "OpenAI-Compatible Model", "secret": False, "required": False},
             {"env_key": "OPENAI_COMPAT_CONTEXT_WINDOW", "label": "OpenAI-Compatible Context Window", "secret": False, "required": False},
             {"env_key": "OPENAI_COMPAT_ENABLE_THINKING", "label": "OpenAI-Compatible Default Thinking (true/false)", "secret": False, "required": False},
+            {"env_key": "OPENAI_COMPAT_LOG_REQUESTS", "label": "OpenAI-Compatible Request Logging (true/false)", "secret": False, "required": False},
+            {"env_key": "OPENAI_COMPAT_LOG_FULL_PAYLOAD", "label": "OpenAI-Compatible Full Payload Logging (true/false)", "secret": False, "required": False},
             {"env_key": "AGENT_ENABLE_FALLBACK", "label": "Enable Fallback (true/false)", "secret": False, "required": False},
             {"env_key": "AGENT_FALLBACK_PROVIDER", "label": "Fallback Provider", "secret": False, "required": False},
             {"env_key": "AGENT_FALLBACK_BASE_URL", "label": "Fallback Base URL", "secret": False, "required": False},
@@ -205,6 +207,10 @@ def _service_effective_values(service_id: str, draft: dict[str, str] | None = No
             )
         if not out.get("OPENAI_COMPAT_ENABLE_THINKING"):
             out["OPENAI_COMPAT_ENABLE_THINKING"] = resolve_env("OPENAI_COMPAT_ENABLE_THINKING", default="false").strip() or "false"
+        if not out.get("OPENAI_COMPAT_LOG_REQUESTS"):
+            out["OPENAI_COMPAT_LOG_REQUESTS"] = resolve_env("OPENAI_COMPAT_LOG_REQUESTS", default="true").strip() or "true"
+        if not out.get("OPENAI_COMPAT_LOG_FULL_PAYLOAD"):
+            out["OPENAI_COMPAT_LOG_FULL_PAYLOAD"] = resolve_env("OPENAI_COMPAT_LOG_FULL_PAYLOAD", default="false").strip() or "false"
         if not out.get("AGENT_ENABLE_FALLBACK"):
             out["AGENT_ENABLE_FALLBACK"] = resolve_env("AGENT_ENABLE_FALLBACK", default="true").strip() or "true"
         for env_key in [

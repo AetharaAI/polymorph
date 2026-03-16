@@ -775,7 +775,7 @@ class MemoryService:
         lines.append(f"- Operator: {user_name} | Function: {user_context} | TZ: {user_tz}")
 
         if user.get("projects"):
-            lines.append(f"- Operator priorities: {str(user.get('projects'))[:220]}")
+            lines.append(f"- Operator priorities: {str(user.get('projects'))[:120]}")
 
         goal = str(state.get("goal") or "").strip() or "(infer from latest user request)"
         lines.append(
@@ -797,11 +797,8 @@ class MemoryService:
         bootstrap_complete = str(bootstrap.get("bootstrap_complete", "false")).lower() == "true"
         if not bootstrap_complete:
             lines.append(
-                "- Onboarding mode: briefly ask for missing profile fields "
-                f"({', '.join(missing) if missing else 'name/context/timezone'}) while still executing the main task."
-            )
-            lines.append(
-                "- Onboarding rule: ask at most one concise onboarding question per response to avoid blocking workflow."
+                "- Onboarding: ask at most one brief question for missing profile fields "
+                f"({', '.join(missing) if missing else 'name/context/timezone'}) while continuing the main task."
             )
 
         return "\n".join(lines)
