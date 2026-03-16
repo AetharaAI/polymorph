@@ -96,6 +96,13 @@ export function VoicePanel({
               {message.role === 'user' ? 'You' : `Voice Agent${message.model ? ` • ${message.model}` : ''}`}
             </div>
             <div className="whitespace-pre-wrap break-words">{message.text}</div>
+            {message.role === 'assistant' && message.stream_state && (
+              <div className="mt-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                {message.transport === 'realtime_stream'
+                  ? `Realtime TTS • ${message.stream_state}`
+                  : `Audio • ${message.stream_state}`}
+              </div>
+            )}
             {message.audio_url && (
               <audio className="mt-2 w-full" controls preload="none" src={message.audio_url} />
             )}
@@ -105,7 +112,7 @@ export function VoicePanel({
         {isLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            PolyMorph Voice Mode is responding...
+            PolyMorph Voice Mode is responding and preparing audio...
           </div>
         )}
 

@@ -37,6 +37,17 @@ class FailoverProvider(BaseLLMProvider):
             return True
         return False
 
+    def _is_context_window_error(self, exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        if not message:
+            return False
+        return (
+            "contextwindowexceeded" in message
+            or "maximum context length" in message
+            or "input tokens" in message
+            or "requested output tokens" in message
+        )
+
     async def generate(
         self,
         *,
@@ -45,6 +56,7 @@ class FailoverProvider(BaseLLMProvider):
         messages: list[dict[str, Any]],
         max_tokens: int,
         temperature: float,
+        enable_thinking: bool | None = None,
         on_stream_event: Callable[[LLMContentBlock], Awaitable[None]] | None = None,
     ) -> LLMResponse:
         failures: list[str] = []
@@ -58,6 +70,7 @@ class FailoverProvider(BaseLLMProvider):
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    enable_thinking=enable_thinking,
                     on_stream_event=on_stream_event,
                 )
                 if not self._has_payload(response):
@@ -76,6 +89,11 @@ class FailoverProvider(BaseLLMProvider):
                     )
                 return response
             except Exception as exc:  # noqa: BLE001
+                if self._is_context_window_error(exc):
+                    provider_lane = "Primary provider" if idx == 0 else f"Fallback provider #{idx}"
+                    raise RuntimeError(
+                        f"{provider_lane} {provider.provider_name}:{provider.model_name} rejected the request due to context-window limits. {exc}"
+                    ) from exc
                 failures.append(f"{provider.provider_name}:{provider.model_name} -> {type(exc).__name__}: {exc}")
                 continue
 

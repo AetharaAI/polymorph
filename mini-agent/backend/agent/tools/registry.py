@@ -6,7 +6,20 @@ import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from backend.agent.tools.manifest import build_tool_schema_payload, manifest_tool_names
+
 TOOL_DEFINITIONS = [
+    {
+        "name": "read_tool_schema",
+        "description": "Load the full parameter schema for a dynamic tool before using it. Use exact tool name from the tool manifest.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tool_name": {"type": "string", "description": "Exact tool name to load"}
+            },
+            "required": ["tool_name"]
+        }
+    },
     {
         "name": "web_search",
         "description": "Search the web for current information. Returns a list of results with titles, URLs, and snippets.",
@@ -693,6 +706,7 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
         health_check,
         fleet_ops,
     )
+    from backend.memory import get_memory_service
 
     try:
         if not isinstance(tool_input, dict):
@@ -705,6 +719,30 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
         }
         if tool_name in disabled_tools:
             return f"Error: Tool '{tool_name}' is disabled by policy"
+
+        if tool_name == "read_tool_schema":
+            requested_tool_name = str(
+                tool_input.get("tool_name")
+                or tool_input.get("name")
+                or ""
+            ).strip()
+            if not requested_tool_name:
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": "read_tool_schema requires 'tool_name'.",
+                        "available_tools": manifest_tool_names(),
+                    },
+                    indent=2,
+                )
+            payload = build_tool_schema_payload(TOOL_DEFINITIONS, requested_tool_name)
+            parsed = json.loads(payload)
+            if parsed.get("status") == "ok":
+                memory = await get_memory_service()
+                loaded = await memory.load_tool_schemas_for_session(session_id, [requested_tool_name])
+                parsed["loaded_tool_schemas"] = loaded
+                payload = json.dumps(parsed, indent=2)
+            return payload
 
         if tool_name == "web_search":
             query, max_results, search_error = _normalize_search_input(tool_input, "web_search")

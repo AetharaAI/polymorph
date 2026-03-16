@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     file_ids: list[str] = Field(default_factory=list)
+    reasoning_mode: Optional[str] = None
     audio_input: Optional[ChatAudioInputPayload] = None
     audio_url: Optional[ChatAudioUrlPayload] = None
 

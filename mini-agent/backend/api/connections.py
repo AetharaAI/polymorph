@@ -11,13 +11,17 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
+from backend.channels import ChannelManager
 from backend.agent.providers import provider_metadata, reset_provider
 from backend.config import (
+    UNIFIED_OPENAI_COMPAT_BASE_URL,
     apply_runtime_overrides_to_env,
     build_service_auth_headers,
     clear_service_overrides,
     encryption_status,
     get_service_overrides,
+    resolve_openai_compat_api_key,
+    resolve_unified_gateway_base,
     resolve_env,
     set_service_overrides,
 )
@@ -38,6 +42,8 @@ SERVICE_SPECS: dict[str, dict[str, Any]] = {
             {"env_key": "OPENAI_COMPAT_BASE_URL", "label": "OpenAI-Compatible Base URL", "secret": False, "required": False},
             {"env_key": "OPENAI_COMPAT_API_KEY", "label": "OpenAI-Compatible API Key", "secret": True, "required": False},
             {"env_key": "OPENAI_COMPAT_MODEL", "label": "OpenAI-Compatible Model", "secret": False, "required": False},
+            {"env_key": "OPENAI_COMPAT_CONTEXT_WINDOW", "label": "OpenAI-Compatible Context Window", "secret": False, "required": False},
+            {"env_key": "OPENAI_COMPAT_ENABLE_THINKING", "label": "OpenAI-Compatible Default Thinking (true/false)", "secret": False, "required": False},
             {"env_key": "AGENT_ENABLE_FALLBACK", "label": "Enable Fallback (true/false)", "secret": False, "required": False},
             {"env_key": "AGENT_FALLBACK_PROVIDER", "label": "Fallback Provider", "secret": False, "required": False},
             {"env_key": "AGENT_FALLBACK_BASE_URL", "label": "Fallback Base URL", "secret": False, "required": False},
@@ -111,6 +117,29 @@ SERVICE_SPECS: dict[str, dict[str, Any]] = {
             {"env_key": "AGENT_SHELL_PROFILE", "label": "Shell Profile (strict/project/project_full)", "secret": False, "required": False},
         ],
     },
+    "channels_runtime": {
+        "name": "Channel Control Plane",
+        "description": "Internal multi-channel ingress layer that routes normalized channel messages into Polymorph sessions.",
+        "requires_restart": False,
+        "fields": [
+            {"env_key": "CHANNELS_RUNTIME_ENABLED", "label": "Enable Channel Runtime (true/false)", "secret": False, "required": False},
+            {"env_key": "CHANNELS_DEFAULT_ROUTE", "label": "Default Route", "secret": False, "required": False},
+            {"env_key": "CHANNELS_SESSION_NAMESPACE", "label": "Session Namespace", "secret": False, "required": False},
+        ],
+    },
+    "telegram_channel": {
+        "name": "Telegram Channel",
+        "description": "Telegram bot adapter settings for the internal channel control plane.",
+        "requires_restart": True,
+        "fields": [
+            {"env_key": "CHANNELS_TELEGRAM_ENABLED", "label": "Enable Telegram (true/false)", "secret": False, "required": False},
+            {"env_key": "CHANNELS_TELEGRAM_BOT_TOKEN", "label": "Bot Token", "secret": True, "required": False},
+            {"env_key": "CHANNELS_TELEGRAM_WEBHOOK_URL", "label": "Webhook URL", "secret": False, "required": False},
+            {"env_key": "CHANNELS_TELEGRAM_WEBHOOK_SECRET", "label": "Webhook Secret", "secret": True, "required": False},
+            {"env_key": "CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS", "label": "Allowed Chat IDs (CSV)", "secret": False, "required": False},
+            {"env_key": "CHANNELS_TELEGRAM_SESSION_SCOPE", "label": "Session Scope", "secret": False, "required": False},
+        ],
+    },
 }
 
 
@@ -132,6 +161,13 @@ def _mask_secret(value: str) -> str:
     if len(value) <= 8:
         return "*" * len(value)
     return f"{value[:4]}{'*' * (len(value) - 6)}{value[-2:]}"
+
+
+def _env_flag(value: str | None, default: bool = False) -> bool:
+    raw = (value or "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
 
 
 def _service_effective_values(service_id: str, draft: dict[str, str] | None = None) -> dict[str, str]:
@@ -159,23 +195,16 @@ def _service_effective_values(service_id: str, draft: dict[str, str] | None = No
         if not out.get("OPENAI_API_KEY"):
             out["OPENAI_API_KEY"] = resolve_env("OPENAI_API_KEY", default="").strip()
         if not out.get("OPENAI_COMPAT_BASE_URL"):
-            out["OPENAI_COMPAT_BASE_URL"] = (
-                resolve_env("LITELLM_MODEL_BASE_URL", default="").strip()
-                or resolve_env("LITELLM_2_MODEL_BASE_URL", default="").strip()
-                or "https://api.openai.com/v1"
-            )
+            out["OPENAI_COMPAT_BASE_URL"] = resolve_unified_gateway_base(service_id="provider") or UNIFIED_OPENAI_COMPAT_BASE_URL
         if not out.get("OPENAI_COMPAT_API_KEY"):
-            out["OPENAI_COMPAT_API_KEY"] = (
-                resolve_env("LITELLM_API_KEY", default="").strip()
-                or resolve_env("LITELLM_2_API_KEY", default="").strip()
-                or resolve_env("OPENAI_API_KEY", default="").strip()
-            )
+            out["OPENAI_COMPAT_API_KEY"] = resolve_openai_compat_api_key(service_id="provider")
         if not out.get("OPENAI_COMPAT_MODEL"):
             out["OPENAI_COMPAT_MODEL"] = (
                 resolve_env("AGENT_MODEL", default="").strip()
                 or resolve_env("LITELLM_MODEL_NAME", default="").strip()
-                or resolve_env("LITELLM_2_MODEL_NAME", default="").strip()
             )
+        if not out.get("OPENAI_COMPAT_ENABLE_THINKING"):
+            out["OPENAI_COMPAT_ENABLE_THINKING"] = resolve_env("OPENAI_COMPAT_ENABLE_THINKING", default="false").strip() or "false"
         if not out.get("AGENT_ENABLE_FALLBACK"):
             out["AGENT_ENABLE_FALLBACK"] = resolve_env("AGENT_ENABLE_FALLBACK", default="true").strip() or "true"
         for env_key in [
@@ -186,6 +215,26 @@ def _service_effective_values(service_id: str, draft: dict[str, str] | None = No
         ]:
             if not out.get(env_key):
                 out[env_key] = resolve_env(env_key, default="").strip()
+    elif service_id == "channels_runtime":
+        if not out.get("CHANNELS_RUNTIME_ENABLED"):
+            out["CHANNELS_RUNTIME_ENABLED"] = resolve_env("CHANNELS_RUNTIME_ENABLED", default="false").strip() or "false"
+        if not out.get("CHANNELS_DEFAULT_ROUTE"):
+            out["CHANNELS_DEFAULT_ROUTE"] = resolve_env("CHANNELS_DEFAULT_ROUTE", default="agent_chat").strip() or "agent_chat"
+        if not out.get("CHANNELS_SESSION_NAMESPACE"):
+            out["CHANNELS_SESSION_NAMESPACE"] = (
+                resolve_env("CHANNELS_SESSION_NAMESPACE", default="channel_conversation").strip() or "channel_conversation"
+            )
+    elif service_id == "telegram_channel":
+        if not out.get("CHANNELS_TELEGRAM_ENABLED"):
+            out["CHANNELS_TELEGRAM_ENABLED"] = resolve_env("CHANNELS_TELEGRAM_ENABLED", default="false").strip() or "false"
+        if not out.get("CHANNELS_TELEGRAM_WEBHOOK_URL"):
+            out["CHANNELS_TELEGRAM_WEBHOOK_URL"] = resolve_env("CHANNELS_TELEGRAM_WEBHOOK_URL", default="").strip()
+        if not out.get("CHANNELS_TELEGRAM_WEBHOOK_SECRET"):
+            out["CHANNELS_TELEGRAM_WEBHOOK_SECRET"] = resolve_env("CHANNELS_TELEGRAM_WEBHOOK_SECRET", default="").strip()
+        if not out.get("CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS"):
+            out["CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS"] = resolve_env("CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS", default="").strip()
+        if not out.get("CHANNELS_TELEGRAM_SESSION_SCOPE"):
+            out["CHANNELS_TELEGRAM_SESSION_SCOPE"] = resolve_env("CHANNELS_TELEGRAM_SESSION_SCOPE", default="chat").strip() or "chat"
     return out
 
 
@@ -317,6 +366,34 @@ async def _test_governance(values: dict[str, str], timeout_seconds: float) -> tu
     )
 
 
+async def _test_channels_runtime(values: dict[str, str], timeout_seconds: float) -> tuple[str, str]:
+    _ = timeout_seconds
+    enabled = _env_flag(values.get("CHANNELS_RUNTIME_ENABLED"), default=False)
+    default_route = values.get("CHANNELS_DEFAULT_ROUTE", "").strip() or "agent_chat"
+    namespace = values.get("CHANNELS_SESSION_NAMESPACE", "").strip() or "channel_conversation"
+    status = "healthy" if enabled else "disabled"
+    return status, f"enabled={enabled} default_route={default_route} session_namespace={namespace}"
+
+
+async def _test_telegram_channel(values: dict[str, str], timeout_seconds: float) -> tuple[str, str]:
+    enabled = _env_flag(values.get("CHANNELS_TELEGRAM_ENABLED"), default=False)
+    token = values.get("CHANNELS_TELEGRAM_BOT_TOKEN", "").strip()
+    if not enabled:
+        return "disabled", "Telegram adapter is disabled."
+    if not token:
+        return "degraded", "CHANNELS_TELEGRAM_BOT_TOKEN is empty."
+
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
+        resp = await client.get(url)
+        data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        if resp.is_success and isinstance(data, dict) and data.get("ok") is True:
+            result = data.get("result") or {}
+            username = str(result.get("username") or "").strip()
+            return "healthy", f"Telegram bot token verified for @{username or 'unknown'}."
+        return "error", f"Telegram getMe failed: HTTP {resp.status_code} {str(data)[:200]}"
+
+
 TESTERS = {
     "provider": _test_provider,
     "asr": _test_asr,
@@ -326,6 +403,8 @@ TESTERS = {
     "postgres": _test_postgres,
     "qdrant": _test_qdrant,
     "governance": _test_governance,
+    "channels_runtime": _test_channels_runtime,
+    "telegram_channel": _test_telegram_channel,
 }
 
 
@@ -368,6 +447,29 @@ async def get_connections(request: Request):
         elif service_id == "tts":
             status = "configured" if effective.get("TTS_BASE_URL") else "disabled"
             details = effective.get("TTS_BASE_URL", "")
+        elif service_id == "channels_runtime":
+            manager = ChannelManager()
+            runtime = manager.runtime_summary()
+            status = str(runtime.get("status") or "disabled")
+            details = (
+                f"default_route={runtime.get('default_route')} "
+                f"session_namespace={runtime.get('session_namespace')}"
+            )
+        elif service_id == "telegram_channel":
+            enabled = _env_flag(effective.get("CHANNELS_TELEGRAM_ENABLED"), default=False)
+            token_present = bool(effective.get("CHANNELS_TELEGRAM_BOT_TOKEN"))
+            if enabled and token_present:
+                status = "configured"
+                details = "Telegram adapter configured; runtime start path not yet enabled by default."
+            elif enabled and not token_present:
+                status = "degraded"
+                details = "Telegram enabled but missing bot token."
+            elif token_present:
+                status = "configured"
+                details = "Telegram token saved but adapter disabled."
+            else:
+                status = "disabled"
+                details = "Telegram adapter disabled."
         else:
             status = "configured" if any(v for v in effective.values()) else "disabled"
 

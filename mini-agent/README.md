@@ -103,7 +103,7 @@ AGENT_MODEL=your-model-name
 # Optional ordered failover before final error
 # AGENT_ENABLE_FALLBACK=true
 # AGENT_FALLBACK_PROVIDER=openai_compat
-# AGENT_FALLBACK_BASE_URL=https://router-1.example/v1
+# AGENT_FALLBACK_BASE_URL=https://api.aetherpro.tech/v1
 # AGENT_FALLBACK_API_KEY=router_key
 # AGENT_FALLBACK_MODEL=known-good-local-model
 
@@ -112,20 +112,17 @@ AGENT_MODEL=your-model-name
 # PROVIDER_ANTHROPIC_BASE_URL=https://api.anthropic.com
 
 # OpenAI-compatible provider (when AGENT_PROVIDER=openai_compat)
-# OPENAI_COMPAT_BASE_URL=https://api.openai.com/v1
+# OPENAI_COMPAT_BASE_URL=https://api.aetherpro.tech/v1
 # OPENAI_COMPAT_API_KEY=your_openai_compat_key
-# OPENAI_COMPAT_PROFILE=primary   # or secondary/litellm2 to auto-pick LITELLM_2_* fallbacks
+# OPENAI_COMPAT_ENABLE_THINKING=false
+# OPENAI_COMPAT_CONTEXT_WINDOW=8192
+# OPENAI_COMPAT_MODEL=qwen3.5-35b
 
-# LiteLLM router aliases (used automatically by openai_compat provider)
-# LITELLM_MODEL_BASE_URL=https://router-1.example/v1
+# Unified gateway model aliases (legacy LiteLLM env names kept only as model catalog aliases)
+# LITELLM_MODEL_BASE_URL=https://api.aetherpro.tech/v1
 # LITELLM_API_KEY=router1_key
-# LITELLM_MODEL_NAME=model-on-router-1
-# LITELLM_2_MODEL_BASE_URL=https://router-2.example/v1
-# LITELLM_2_API_KEY=router2_key
-# LITELLM_2_MODEL_NAME=model-on-router-2
-# Optional extra models on router 2:
-# LITELLM_2_MODEL_NAMES=model-a,model-b
-# or LITELLM_2_MODEL_NAME_2=model-b
+# LITELLM_MODEL_NAME=model-on-gateway
+# LITELLM_MODEL_NAMES=model-a,model-b,openai/qwen3.5-122
 
 MAX_AGENT_ITERATIONS=60
 MAX_TOOL_CALLS_PER_ITERATION=12

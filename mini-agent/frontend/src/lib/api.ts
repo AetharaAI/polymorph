@@ -23,6 +23,7 @@ export interface ChatRequest {
   session_id: string;
   message: string;
   file_ids: string[];
+  reasoning_mode?: 'direct' | 'reasoning' | null;
   audio_input?: {
     data: string;
     format: string;
@@ -49,6 +50,7 @@ export async function sendMessage(
   fileIds: string[],
   onEvent: (event: ChatEvent) => void,
   options?: {
+    reasoning_mode?: ChatRequest['reasoning_mode'];
     audio_input?: ChatRequest['audio_input'];
     audio_url?: ChatRequest['audio_url'];
   }
@@ -62,6 +64,7 @@ export async function sendMessage(
       session_id: sessionId,
       message,
       file_ids: fileIds,
+      reasoning_mode: options?.reasoning_mode ?? 'direct',
       audio_input: options?.audio_input ?? null,
       audio_url: options?.audio_url ?? null,
     }),
@@ -401,6 +404,9 @@ export interface VoiceConfigResponse {
   model: string;
   provider: string;
   transport: string;
+  realtime_tts_configured: boolean;
+  realtime_tts_model: string;
+  realtime_tts_base_url: string;
   tts_base_url: string;
   default_voice_id: string;
   available_voices: Array<{
@@ -429,15 +435,26 @@ export interface VoiceTurnResponse {
   provider: string;
   model: string;
   voice_id: string;
-  mime_type: string;
-  audio_url: string;
+  tts_transport: string;
+  mime_type?: string | null;
+  audio_url?: string | null;
+  tts_stream_session_id?: string | null;
+  tts_stream_ws_url?: string | null;
+  tts_stream_http_base_url?: string | null;
+  tts_stream_model_requested?: string | null;
+  tts_stream_model_used?: string | null;
+  tts_stream_fallback_used?: boolean | null;
+  tts_stream_runtime?: Record<string, unknown>;
 }
 
 export async function sendVoiceTurn(
   sessionId: string,
   message: string,
   history: VoiceTurnHistoryItem[],
-  voiceId?: string
+  voiceId?: string,
+  options?: {
+    reasoning_mode?: 'direct' | 'reasoning' | null;
+  }
 ): Promise<VoiceTurnResponse> {
   const response = await fetch(`${BACKEND_URL}/api/voice/turn`, {
     method: 'POST',
@@ -449,6 +466,7 @@ export async function sendVoiceTurn(
       message,
       history,
       voice_id: voiceId ?? null,
+      reasoning_mode: options?.reasoning_mode ?? 'direct',
     }),
   });
 
@@ -460,9 +478,10 @@ export async function sendVoiceTurn(
   const data = await response.json();
   return {
     ...data,
-    audio_url: typeof data.audio_url === 'string' && data.audio_url.startsWith('http')
-      ? data.audio_url
-      : `${BACKEND_URL}${data.audio_url}`,
+    audio_url:
+      typeof data.audio_url === 'string' && data.audio_url
+        ? (data.audio_url.startsWith('http') ? data.audio_url : `${BACKEND_URL}${data.audio_url}`)
+        : null,
   };
 }
 

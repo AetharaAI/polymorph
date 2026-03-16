@@ -8,6 +8,10 @@ from backend.agent.providers.base import BaseLLMProvider
 from backend.agent.providers.failover_provider import FailoverProvider
 from backend.agent.providers.openai_compat_provider import OpenAICompatProvider
 from backend.agent.providers.openai_provider import OpenAIProvider
+from backend.config.gateway import (
+    resolve_openai_compat_api_key,
+    resolve_unified_gateway_base,
+)
 from backend.config.runtime import get_service_overrides
 
 _PROVIDER: BaseLLMProvider | None = None
@@ -21,6 +25,26 @@ def _provider_target(provider: BaseLLMProvider) -> tuple[str, str]:
     if isinstance(provider, OpenAICompatProvider):
         return (_norm(getattr(provider, "_base_url", "")), provider.model_name)
     return (provider.provider_name, provider.model_name)
+
+
+def _gateway_model_candidates() -> list[str]:
+    raw_values = [
+        _norm(os.getenv("LITELLM_MODEL_NAME")),
+        _norm(os.getenv("OPENAI_COMPAT_MODEL")),
+        _norm(os.getenv("AGENT_FALLBACK_MODEL")),
+    ]
+    listed = _norm(os.getenv("LITELLM_MODEL_NAMES"))
+    if listed:
+        raw_values.extend(part.strip() for part in listed.split(","))
+    for key, value in os.environ.items():
+        if key.startswith("LITELLM_MODEL_NAME_"):
+            raw_values.append(_norm(value))
+
+    models: list[str] = []
+    for value in raw_values:
+        if value and value not in models:
+            models.append(value)
+    return models
 
 
 def _build_single_provider(
@@ -77,32 +101,25 @@ def _explicit_fallback_provider() -> BaseLLMProvider | None:
         return None
 
 
-def _litellm_fallback_providers() -> list[BaseLLMProvider]:
+def _implicit_gateway_fallback_providers() -> list[BaseLLMProvider]:
     fallbacks: list[BaseLLMProvider] = []
-    pairs = [
-        (
-            _norm(os.getenv("LITELLM_MODEL_BASE_URL")),
-            _norm(os.getenv("LITELLM_API_KEY")),
-            _norm(os.getenv("LITELLM_MODEL_NAME")),
-            "litellm_primary_fallback",
-        ),
-        (
-            _norm(os.getenv("LITELLM_2_MODEL_BASE_URL")),
-            _norm(os.getenv("LITELLM_2_API_KEY")),
-            _norm(os.getenv("LITELLM_2_MODEL_NAME")),
-            "litellm_secondary_fallback",
-        ),
-    ]
-    for base_url, api_key, model_name, label in pairs:
-        if not (base_url and api_key and model_name):
-            continue
+    base_url = resolve_unified_gateway_base(
+        explicit=_norm(os.getenv("OPENAI_COMPAT_BASE_URL")) or _norm(os.getenv("LITELLM_MODEL_BASE_URL")),
+    )
+    api_key = resolve_openai_compat_api_key(
+        explicit=_norm(os.getenv("OPENAI_COMPAT_API_KEY")) or _norm(os.getenv("LITELLM_API_KEY")),
+    )
+    if not (base_url and api_key):
+        return fallbacks
+
+    for index, model_name in enumerate(_gateway_model_candidates(), start=1):
         try:
             fallbacks.append(
                 OpenAICompatProvider(
                     base_url=base_url,
                     api_key=api_key,
                     model_name=model_name,
-                    provider_name=label,
+                    provider_name=f"gateway_model_fallback_{index}",
                 )
             )
         except Exception:
@@ -119,7 +136,12 @@ def _build_provider_chain(primary: BaseLLMProvider) -> BaseLLMProvider:
     explicit = _explicit_fallback_provider()
     if explicit is not None:
         candidates.append(explicit)
-    candidates.extend(_litellm_fallback_providers())
+        enable_implicit = _norm(os.getenv("AGENT_ENABLE_IMPLICIT_LITELLM_FALLBACKS", "false")).lower() in {"1", "true", "yes", "on"}
+    else:
+        enable_implicit = _norm(os.getenv("AGENT_ENABLE_IMPLICIT_LITELLM_FALLBACKS", "true")).lower() in {"1", "true", "yes", "on"}
+
+    if enable_implicit:
+        candidates.extend(_implicit_gateway_fallback_providers())
 
     deduped: list[BaseLLMProvider] = []
     seen = {_provider_target(primary)}
@@ -151,13 +173,12 @@ def get_multimodal_audio_provider() -> BaseLLMProvider | None:
     base_url = (
         _norm(os.getenv("DIRECT_AUDIO_BASE_URL"))
         or _norm(os.getenv("PHI_4_INSTRUCT_MODEL_BASE_URL"))
-        or _norm(os.getenv("OPENAI_COMPAT_BASE_URL"))
+        or resolve_unified_gateway_base()
     )
     api_key = (
         _norm(os.getenv("DIRECT_AUDIO_API_KEY"))
         or _norm(os.getenv("PHI_4_INSTRUCT_API_KEY"))
-        or _norm(os.getenv("OPENAI_COMPAT_API_KEY"))
-        or _norm(os.getenv("LITELLM_API_KEY"))
+        or resolve_openai_compat_api_key()
     )
     model_name = (
         _norm(os.getenv("DIRECT_AUDIO_MODEL"))
@@ -192,7 +213,7 @@ def validate_provider_config() -> tuple[bool, str]:
         if provider_name == "openai":
             return False, "Missing OpenAI credentials or invalid OpenAI configuration (OPENAI_API_KEY / OPENAI_MODEL)"
         if provider_name in {"openai_compat", "openai-compatible"}:
-            return False, "Missing OpenAI-compatible credentials or router config (OPENAI_COMPAT_API_KEY / OPENAI_COMPAT_BASE_URL / OPENAI_COMPAT_MODEL)"
+            return False, "Missing OpenAI-compatible credentials or unified gateway config (OPENAI_COMPAT_API_KEY / OPENAI_COMPAT_BASE_URL / OPENAI_COMPAT_MODEL)"
         return False, f"Invalid provider configuration: {exc}"
 
 

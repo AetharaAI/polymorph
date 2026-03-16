@@ -22,6 +22,7 @@ async def event_generator(
     session_id: str,
     message: str,
     file_ids: list[str],
+    reasoning_mode: str | None,
     audio_input: dict | None,
     audio_url: dict | None,
 ):
@@ -114,6 +115,7 @@ async def event_generator(
             message,
             file_ids,
             stream_callback,
+            reasoning_mode=reasoning_mode,
             audio_input=audio_input,
             audio_url=audio_url,
         )
@@ -169,6 +171,7 @@ async def chat(request: ChatRequest, req: Request):
             request.session_id,
             request.message,
             request.file_ids or [],
+            request.reasoning_mode,
             request.audio_input.model_dump() if request.audio_input else None,
             request.audio_url.model_dump() if request.audio_url else None,
         ),

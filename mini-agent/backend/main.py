@@ -3,7 +3,6 @@ import sys
 import time
 from pathlib import Path
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,12 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.agent.providers import provider_metadata, validate_provider_config
 from backend.agent.tools.health_check import run_tool_health_checks
-from backend.api import audio, chat, connections, files, health, replay, sessions, voice
-from backend.config import apply_runtime_overrides_to_env
+from backend.api import audio, channels, chat, connections, files, health, replay, sessions, voice
+from backend.config import apply_runtime_overrides_to_env, load_harness_env
 from backend.memory import get_memory_service
 
 # Load environment variables
-load_dotenv()
+load_harness_env()
 apply_runtime_overrides_to_env()
 
 provider_ok, provider_detail = validate_provider_config()
@@ -101,6 +100,7 @@ app.include_router(replay.router, prefix="/api", tags=["replay"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(audio.router, prefix="/api", tags=["audio"])
 app.include_router(connections.router, prefix="/api", tags=["connections"])
+app.include_router(channels.router, prefix="/api", tags=["channels"])
 app.include_router(voice.router, prefix="/api", tags=["voice"])
 
 

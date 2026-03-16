@@ -178,6 +178,8 @@ export interface VoiceMessage {
   audio_url?: string;
   model?: string;
   voice_id?: string;
+  transport?: string;
+  stream_state?: 'starting' | 'streaming' | 'completed' | 'error';
 }
 
 export interface VoiceConfig {
@@ -185,6 +187,9 @@ export interface VoiceConfig {
   model: string;
   provider: string;
   transport: string;
+  realtime_tts_configured: boolean;
+  realtime_tts_model: string;
+  realtime_tts_base_url: string;
   tts_base_url: string;
   default_voice_id: string;
   available_voices: Array<{

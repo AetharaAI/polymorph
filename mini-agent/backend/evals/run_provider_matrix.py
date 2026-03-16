@@ -10,6 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.agent.providers.factory import reset_provider, get_provider
+from backend.config.gateway import (
+    resolve_openai_compat_api_key,
+    resolve_unified_gateway_base,
+)
 
 
 def _candidate_models(prefix: str) -> list[str]:
@@ -45,32 +49,30 @@ def _candidate_models(prefix: str) -> list[str]:
 def _build_targets() -> list[dict[str, str]]:
     targets: list[dict[str, str]] = []
 
-    primary_base = os.getenv("LITELLM_MODEL_BASE_URL")
-    primary_key = os.getenv("LITELLM_API_KEY")
-    primary_models = _candidate_models("LITELLM")
+    base_url = resolve_unified_gateway_base(
+        explicit=os.getenv("OPENAI_COMPAT_BASE_URL") or os.getenv("LITELLM_MODEL_BASE_URL"),
+    )
+    api_key = resolve_openai_compat_api_key(
+        explicit=os.getenv("OPENAI_COMPAT_API_KEY") or os.getenv("LITELLM_API_KEY"),
+    )
+    models = _candidate_models("LITELLM")
+    direct_model = os.getenv("OPENAI_COMPAT_MODEL")
+    if direct_model:
+        models = [direct_model, *models]
 
-    secondary_base = os.getenv("LITELLM_2_MODEL_BASE_URL")
-    secondary_key = os.getenv("LITELLM_2_API_KEY")
-    secondary_models = _candidate_models("LITELLM_2")
+    deduped_models: list[str] = []
+    for model in models:
+        clean = model.strip()
+        if clean and clean not in deduped_models:
+            deduped_models.append(clean)
 
-    if primary_base and primary_key and primary_models:
-        for model in primary_models:
+    if base_url and api_key and deduped_models:
+        for model in deduped_models:
             targets.append(
                 {
-                    "label": f"litellm-primary:{model}",
-                    "base_url": primary_base,
-                    "api_key": primary_key,
-                    "model": model,
-                }
-            )
-
-    if secondary_base and secondary_key and secondary_models:
-        for model in secondary_models:
-            targets.append(
-                {
-                    "label": f"litellm-secondary:{model}",
-                    "base_url": secondary_base,
-                    "api_key": secondary_key,
+                    "label": f"gateway:{model}",
+                    "base_url": base_url,
+                    "api_key": api_key,
                     "model": model,
                 }
             )
@@ -94,6 +96,7 @@ async def _run_target(target: dict[str, str]) -> dict:
             messages=[{"role": "user", "content": [{"type": "text", "text": "Reply with: OK"}]}],
             max_tokens=40,
             temperature=0,
+            enable_thinking=False,
         )
         text = " ".join((b.text or "") for b in response.content if b.type == "text").strip()
         ok = bool(text)
@@ -117,7 +120,7 @@ async def _run_target(target: dict[str, str]) -> dict:
 async def main_async() -> int:
     targets = _build_targets()
     if not targets:
-        print(json.dumps({"status": "fail", "error": "No LiteLLM targets discovered in env"}, indent=2))
+        print(json.dumps({"status": "fail", "error": "No unified gateway targets discovered in env"}, indent=2))
         return 1
 
     results = []

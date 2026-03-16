@@ -8,9 +8,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from dotenv import load_dotenv
 
-load_dotenv()
+from backend.config.bootstrap import load_harness_env
+
+load_harness_env()
 
 import redis.asyncio as redis
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -345,9 +346,16 @@ class MemoryService:
             return summary[:max_chars] + "\n- [summary truncated]"
         return summary
 
-    async def prepare_messages_for_model(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def prepare_messages_for_model(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        max_chars: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Compact long message histories to keep context bounded and stable."""
-        max_chars = int(os.getenv("MAX_HISTORY_CHARS_FOR_MODEL", "180000"))
+        if max_chars is None:
+            max_chars = int(os.getenv("MAX_HISTORY_CHARS_FOR_MODEL", "180000"))
+        max_chars = max(2000, int(max_chars))
         if not messages:
             return messages
 
@@ -570,6 +578,7 @@ class MemoryService:
                 "build_plan_requested_at": "",
                 "last_user_message_at": "",
                 "last_agent_run_at": "",
+                "loaded_tool_schemas": "[]",
             },
         )
         await self.redis.expire(key, 86400 * 14)
@@ -595,6 +604,12 @@ class MemoryService:
             state["recent_tools"] = parsed if isinstance(parsed, list) else []
         except Exception:
             state["recent_tools"] = []
+        loaded_tools_raw = state.get("loaded_tool_schemas", "[]")
+        try:
+            parsed_loaded = json.loads(loaded_tools_raw)
+            state["loaded_tool_schemas"] = parsed_loaded if isinstance(parsed_loaded, list) else []
+        except Exception:
+            state["loaded_tool_schemas"] = []
         return state
 
     async def update_session_state(self, session_id: str, payload: dict[str, Any]) -> None:
@@ -641,6 +656,9 @@ class MemoryService:
             update["last_user_message_at"] = str(payload.get("last_user_message_at") or "").strip()[:80]
         if "last_agent_run_at" in payload:
             update["last_agent_run_at"] = str(payload.get("last_agent_run_at") or "").strip()[:80]
+        if "loaded_tool_schemas" in payload and isinstance(payload["loaded_tool_schemas"], list):
+            loaded_tools = [str(name).strip() for name in payload["loaded_tool_schemas"] if str(name).strip()]
+            update["loaded_tool_schemas"] = json.dumps(loaded_tools[-16:])
 
         if update:
             await self.redis.hset(key, mapping=update)
@@ -659,6 +677,20 @@ class MemoryService:
                 "total_tool_calls": int(state.get("total_tool_calls", 0)) + len(names),
             },
         )
+
+    async def load_tool_schemas_for_session(self, session_id: str, tool_names: list[str]) -> list[str]:
+        names = [str(name).strip() for name in tool_names if str(name).strip()]
+        if not names:
+            state = await self.get_session_state(session_id)
+            return list(state.get("loaded_tool_schemas", []))
+        state = await self.get_session_state(session_id)
+        merged: list[str] = []
+        for name in [*state.get("loaded_tool_schemas", []), *names]:
+            if name and name not in merged:
+                merged.append(name)
+        merged = merged[-16:]
+        await self.update_session_state(session_id, {"loaded_tool_schemas": merged})
+        return merged
 
     async def maybe_capture_user_profile(self, message: str) -> None:
         text = (message or "").strip()

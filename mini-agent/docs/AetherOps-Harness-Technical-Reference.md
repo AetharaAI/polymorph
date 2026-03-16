@@ -316,17 +316,19 @@ Current provider implementations:
 
 Current behavior:
 - `AGENT_PROVIDER=openai` uses the direct OpenAI adapter
-- `AGENT_PROVIDER=openai_compat` uses OpenAI-compatible routers such as LiteLLM/vLLM gateways
+- `AGENT_PROVIDER=openai_compat` uses the unified OpenAI-compatible gateway/control plane
 - failover is explicit and ordered:
   - primary provider selected by `AGENT_PROVIDER`
   - optional explicit fallback from `AGENT_FALLBACK_*`
-  - optional router fallbacks from `LITELLM_*` / `LITELLM_2_*`
+  - optional same-gateway model fallbacks seeded from unified model alias envs such as `LITELLM_MODEL_NAME`, `LITELLM_MODEL_NAMES`, and `OPENAI_COMPAT_MODEL`
 - fallback is only used when the primary provider errors or returns an empty payload
 - direct OpenAI GPT-5-family requests require:
   - `max_completion_tokens` instead of `max_tokens`
   - no compat-only `extra_body` payload fields
 - OpenAI and OpenAI-compatible adapters both normalize tool calls to OpenAI-style `tools=[{type:function,...}]`
 - providers that support image prompt blocks declare that capability explicitly
+- Qwen3/Qwen3.5 direct-answer flows default to `extra_body.chat_template_kwargs.enable_thinking=false`
+- per-request reasoning mode can explicitly re-enable Qwen thinking when the caller requests it
 
 ### API Route Contract
 Primary backend routes:
@@ -379,7 +381,7 @@ Known current caveat:
 ### 2026-03-06
 - Split provider runtime into explicit adapters:
   - `openai_provider.py` for direct OpenAI
-  - `openai_compat_provider.py` for LiteLLM/vLLM/OpenAI-compatible routers
+  - `openai_compat_provider.py` for the unified LiteLLM/OpenAI-compatible gateway
   - `failover_provider.py` for ordered fallback before final failure
 - Added provider metadata on responses:
   - provider name

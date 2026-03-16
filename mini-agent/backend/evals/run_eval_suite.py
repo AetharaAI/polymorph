@@ -104,6 +104,7 @@ async def test_provider_contract_live() -> tuple[bool, str]:
         messages=[{"role": "user", "content": [{"type": "text", "text": "Reply with OK"}]}],
         max_tokens=40,
         temperature=0,
+        enable_thinking=False,
     )
     text = " ".join((b.text or "") for b in response.content if b.type == "text").strip()
     thinking = " ".join((b.thinking or "") for b in response.content if b.type == "thinking").strip()
@@ -144,6 +145,7 @@ async def test_provider_failover_live() -> tuple[bool, str]:
         messages=[{"role": "user", "content": [{"type": "text", "text": "Reply with OK"}]}],
         max_tokens=40,
         temperature=0,
+        enable_thinking=False,
     )
     text = " ".join((b.text or "") for b in response.content if b.type == "text").strip()
     ok = response.fallback_used and bool(text)

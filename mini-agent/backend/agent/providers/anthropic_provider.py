@@ -51,6 +51,7 @@ class AnthropicProvider(BaseLLMProvider):
         messages: list[dict[str, Any]],
         max_tokens: int,
         temperature: float,
+        enable_thinking: bool | None = None,
         on_stream_event: Callable[[LLMContentBlock], Awaitable[None]] | None = None,
     ) -> LLMResponse:
         response = await asyncio.to_thread(

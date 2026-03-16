@@ -53,6 +53,7 @@ Summary:"""
                 messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
                 max_tokens=1024,
                 temperature=0.3,
+                enable_thinking=False,
             )
             summary = _extract_text_from_response(response.content)
             summaries.append(summary or "[No summary text returned]")
@@ -73,6 +74,7 @@ Final Summary:"""
                 messages=[{"role": "user", "content": [{"type": "text", "text": final_prompt}]}],
                 max_tokens=1024,
                 temperature=0.3,
+                enable_thinking=False,
             )
             final_summary = _extract_text_from_response(response.content)
             return final_summary or "\n\n".join(summaries)

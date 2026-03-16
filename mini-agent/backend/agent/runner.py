@@ -13,10 +13,6 @@ from typing import Any, Callable
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from backend.agent.providers import get_provider, provider_metadata
@@ -25,9 +21,12 @@ from backend.agent.providers.base import LLMContentBlock
 from backend.agent.skills import build_skills_prompt
 from backend.agent.telemetry import SessionReplayLogger
 from backend.agent.tools import TOOL_DEFINITIONS, dispatch_tool
+from backend.agent.tools.manifest import build_tools_prompt_block, get_active_tool_definitions
 from backend.agent.tools import file_ops
-from backend.config import resolve_env
+from backend.config import load_harness_env, resolve_env
 from backend.memory import get_memory_service
+
+load_harness_env()
 
 DEFAULT_SYSTEM_PROMPT = """You are Agent-Max, an autonomous AI agent running inside a model-agnostic execution harness.
 
@@ -43,7 +42,7 @@ Evaluate the tool results:
 3. Decide next action: continue_same_strategy, revise_query_or_parameters, switch_tools, or conclude_task.
 4. Never invent facts. If evidence is insufficient, explicitly say so and verify."""
 
-MODEL_CONTEXT_WINDOW = int(os.getenv("MODEL_CONTEXT_WINDOW", "204800"))
+MODEL_CONTEXT_WINDOW = int(os.getenv("MODEL_CONTEXT_WINDOW", "0") or "0")
 MAX_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "60"))
 MAX_TOOL_CALLS_PER_ITERATION = int(os.getenv("MAX_TOOL_CALLS_PER_ITERATION", "12"))
 MAX_TOOL_CALLS_PER_RUN = int(os.getenv("MAX_TOOL_CALLS_PER_RUN", "120"))
@@ -54,6 +53,17 @@ MAX_TEXT_BLOCK_CHARS_FOR_CONTEXT = int(os.getenv("MAX_TEXT_BLOCK_CHARS_FOR_CONTE
 MAX_TOOL_RESULT_CHARS_FOR_CONTEXT = int(os.getenv("MAX_TOOL_RESULT_CHARS_FOR_CONTEXT", "12000"))
 STRICT_VERIFICATION_MODE = os.getenv("STRICT_VERIFICATION_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
 ENABLE_REPLAY_LOGS = os.getenv("ENABLE_REPLAY_LOGS", "true").strip().lower() in {"1", "true", "yes", "on"}
+INCLUDE_HARNESS_METADATA_IN_PROMPT = os.getenv(
+    "AGENT_INCLUDE_HARNESS_METADATA_IN_PROMPT", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+DYNAMIC_TOOL_SELECTION_ENABLED = os.getenv(
+    "AGENT_DYNAMIC_TOOL_SELECTION", "true"
+).strip().lower() in {"1", "true", "yes", "on"}
+CONTEXT_WINDOW_FALLBACK_MULTIPLIER = float(os.getenv("CONTEXT_WINDOW_FALLBACK_MULTIPLIER", "2.0"))
+CONTEXT_WINDOW_FALLBACK_MIN = int(os.getenv("CONTEXT_WINDOW_FALLBACK_MIN", "8192"))
+CONTEXT_WINDOW_MESSAGE_CHAR_RATIO = float(os.getenv("CONTEXT_WINDOW_MESSAGE_CHAR_RATIO", "4.0"))
+CONTEXT_WINDOW_OUTPUT_RESERVE = int(os.getenv("CONTEXT_WINDOW_OUTPUT_RESERVE", "256"))
+MIN_MESSAGE_HISTORY_CHARS = int(os.getenv("MIN_MESSAGE_HISTORY_CHARS", "4000"))
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 AGENTS_RULES_PATH = Path(os.getenv("AGENTS_RULES_PATH", str(Path(__file__).resolve().parents[1] / "AGENTS.md")))
 PLAN_APPROVAL_KEYWORDS = tuple(
@@ -156,25 +166,18 @@ def _build_temporal_context_block(
 
     lines = [
         "## Temporal Context",
-        "- Treat this block as the authoritative current time/date context for this response.",
-        f"- Current UTC: {now_utc.isoformat()}",
-        f"- Current local: {now_local.isoformat()}",
-        f"- Local timezone: {tz_name}",
-        f"- Local calendar: {now_local.strftime('%A, %B %d, %Y')}",
-        f"- Local clock: {now_local.strftime('%H:%M:%S %Z')}",
-        f"- Unix timestamp: {int(now_utc.timestamp())}",
-        f"- Session created_at_utc: {session_created_at.isoformat() if session_created_at else 'n/a'}",
-        f"- Session age: {_format_elapsed(session_age_seconds)}",
-        f"- Previous user turn at_utc: {previous_user_turn.isoformat() if previous_user_turn else 'n/a'}",
-        f"- Time since previous user turn: {_format_elapsed(since_previous_user_seconds)}",
-        f"- Previous agent run at_utc: {previous_agent_run.isoformat() if previous_agent_run else 'n/a'}",
-        f"- Time since previous agent run: {_format_elapsed(since_previous_agent_seconds)}",
-        "- For words like today/latest/now/yesterday/tomorrow, reason from these timestamps instead of guessing.",
+        f"- utc={now_utc.isoformat()}",
+        f"- local={now_local.isoformat()} ({tz_name})",
+        f"- unix={int(now_utc.timestamp())}",
+        f"- session_created_at_utc={session_created_at.isoformat() if session_created_at else 'n/a'} age={_format_elapsed(session_age_seconds)}",
+        f"- previous_user_turn_at_utc={previous_user_turn.isoformat() if previous_user_turn else 'n/a'} elapsed={_format_elapsed(since_previous_user_seconds)}",
+        f"- previous_agent_run_at_utc={previous_agent_run.isoformat() if previous_agent_run else 'n/a'} elapsed={_format_elapsed(since_previous_agent_seconds)}",
+        "- Use these timestamps for relative dates instead of guessing.",
     ]
     return "\n".join(lines)
 
 
-async def _build_harness_metadata_block() -> str:
+async def _build_harness_metadata_block(tool_definitions: list[dict[str, Any]]) -> str:
     memory = await get_memory_service()
     provider = provider_metadata()
     actual = provider.get("actual", {})
@@ -185,7 +188,7 @@ async def _build_harness_metadata_block() -> str:
         "- Treat this block as authoritative harness self-knowledge for this response.",
         f"- Requested provider/model: {requested.get('provider', 'n/a')} / {requested.get('model', 'n/a')}",
         f"- Actual provider/model: {actual.get('provider', provider.get('provider', 'n/a'))} / {actual.get('model', provider.get('model', 'n/a'))}",
-        f"- Tool count: {len(TOOL_DEFINITIONS)}",
+        f"- Tool count this turn: {len(tool_definitions)}",
         f"- Skills registry: {Path(__file__).resolve().parents[1] / 'SKILLS.md'}",
         f"- Memory namespace: {getattr(memory, 'memory_namespace', '') or 'default'}",
         f"- Memory degraded mode: {bool(getattr(memory, 'degraded_mode', False))}",
@@ -229,11 +232,60 @@ def _is_project_build_request(user_message: str) -> bool:
     return lowered.count("\n") > 12 and any(token in lowered for token in {"api", "auth", "database", "schema", "test"})
 
 
+def _select_tool_definitions(
+    *,
+    loaded_tool_names: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if not DYNAMIC_TOOL_SELECTION_ENABLED:
+        return TOOL_DEFINITIONS
+    return get_active_tool_definitions(TOOL_DEFINITIONS, loaded_tool_names=loaded_tool_names)
+
+
+def _resolve_effective_context_window(provider: Any, requested_max_tokens: int) -> int:
+    compat_override = resolve_env("OPENAI_COMPAT_CONTEXT_WINDOW", default="").strip()
+    for raw in (compat_override, str(MODEL_CONTEXT_WINDOW or "")):
+        try:
+            value = int(raw)
+        except Exception:
+            value = 0
+        if value > 0:
+            return value
+
+    provider_name = str(getattr(provider, "provider_name", "") or "").lower()
+    if "openai_compat" not in provider_name:
+        return max(requested_max_tokens * 4, CONTEXT_WINDOW_FALLBACK_MIN)
+
+    fallback_window = max(
+        CONTEXT_WINDOW_FALLBACK_MIN,
+        int(requested_max_tokens * CONTEXT_WINDOW_FALLBACK_MULTIPLIER),
+    )
+    return fallback_window
+
+
+def _history_char_budget_for_iteration(
+    *,
+    provider: Any,
+    system_prompt: str,
+    requested_max_tokens: int,
+) -> tuple[int, int]:
+    context_window = _resolve_effective_context_window(provider, requested_max_tokens)
+    configured_cap = int(os.getenv("MAX_HISTORY_CHARS_FOR_MODEL", "180000"))
+    input_budget_tokens = max(1024, context_window - requested_max_tokens - CONTEXT_WINDOW_OUTPUT_RESERVE)
+    budget_chars = int(input_budget_tokens * CONTEXT_WINDOW_MESSAGE_CHAR_RATIO) - len(system_prompt)
+    budget_chars = max(MIN_MESSAGE_HISTORY_CHARS, budget_chars)
+    return min(configured_cap, budget_chars), context_window
+
+
 def _is_plan_approval_message(user_message: str) -> bool:
     lowered = (user_message or "").lower()
     if any(keyword in lowered for keyword in PLAN_APPROVAL_KEYWORDS):
         return True
     return bool(re.search(r"\b(approve|approved|proceed|continue)\b", lowered) and "plan" in lowered)
+
+
+def _resolve_enable_thinking_for_chat(reasoning_mode: str | None) -> bool:
+    normalized = (reasoning_mode or "").strip().lower()
+    return normalized == "reasoning"
 
 
 def _extract_write_filename(tool_input: dict[str, Any]) -> str:
@@ -687,6 +739,7 @@ async def run_agent(
     file_ids: list[str],
     stream_callback: Callable[[dict], Any],
     *,
+    reasoning_mode: str | None = None,
     audio_input: dict[str, Any] | None = None,
     audio_url: dict[str, Any] | None = None,
 ) -> None:
@@ -788,22 +841,20 @@ async def run_agent(
 
     system_prompt = _load_prompt("SYSTEM_PROMPT_PATH", "system_prompt.md", DEFAULT_SYSTEM_PROMPT)
     eval_prompt_text = _load_prompt("TOOL_EVALUATION_PROMPT_PATH", "tool_evaluation_prompt.md", DEFAULT_EVAL_PROMPT)
-
-    harness_metadata = await _build_harness_metadata_block()
-    full_system_prompt = temporal_context + "\n\n" + harness_metadata + "\n\n" + system_prompt
+    base_system_prompt = temporal_context + "\n\n" + system_prompt
     if agent_rules:
-        full_system_prompt += "\n\n" + agent_rules
+        base_system_prompt += "\n\n" + agent_rules
     if identity_context:
-        full_system_prompt += "\n\n" + identity_context
+        base_system_prompt += "\n\n" + identity_context
     if context:
-        full_system_prompt += "\n\n" + context
+        base_system_prompt += "\n\n" + context
     if project_governance:
-        full_system_prompt += "\n\n" + project_governance
-    full_system_prompt += "\n\n" + core_prompt
+        base_system_prompt += "\n\n" + project_governance
+    base_system_prompt += "\n\n" + core_prompt
 
     skills_prompt, selected_skills = build_skills_prompt(user_message)
     if skills_prompt:
-        full_system_prompt += "\n\n" + skills_prompt
+        base_system_prompt += "\n\n" + skills_prompt
         for skill in selected_skills:
             await stream_callback(
                 {
@@ -872,24 +923,56 @@ async def run_agent(
     messages.append({"role": "user", "content": user_content})
     await memory.save_messages(session_id, _sanitize_messages_for_persistence(messages))
 
-    # Compact context before sending to the model when history is long.
-    if hasattr(memory, "prepare_messages_for_model"):
-        messages_for_model = await memory.prepare_messages_for_model(messages)
-    else:
-        messages_for_model = messages
-    api_messages = _convert_content_for_api(messages_for_model)
-
     iteration = 0
     total_input_tokens = 0
     total_output_tokens = 0
     peak_input_tokens = 0
     total_tool_calls = 0
     tools_used: set[str] = set()
+    reported_context_window = _resolve_effective_context_window(provider, AGENT_MAX_TOKENS)
 
     while iteration < MAX_ITERATIONS:
         iteration += 1
 
-        await replay.log("iteration_start", {"iteration": iteration, "message_count": len(api_messages)})
+        iteration_state = await memory.get_session_state(session_id)
+        loaded_tool_names = list(iteration_state.get("loaded_tool_schemas", []))
+        active_tool_definitions = _select_tool_definitions(
+            loaded_tool_names=loaded_tool_names,
+        )
+        iteration_system_prompt = base_system_prompt + "\n\n" + build_tools_prompt_block(
+            TOOL_DEFINITIONS,
+            loaded_tool_names=loaded_tool_names,
+        )
+        if INCLUDE_HARNESS_METADATA_IN_PROMPT:
+            harness_metadata = await _build_harness_metadata_block(active_tool_definitions)
+            iteration_system_prompt += "\n\n" + harness_metadata
+
+        history_char_budget, reported_context_window = _history_char_budget_for_iteration(
+            provider=provider,
+            system_prompt=iteration_system_prompt,
+            requested_max_tokens=AGENT_MAX_TOKENS,
+        )
+        if hasattr(memory, "prepare_messages_for_model"):
+            messages_for_model = await memory.prepare_messages_for_model(
+                messages,
+                max_chars=history_char_budget,
+            )
+        else:
+            messages_for_model = messages
+        api_messages = _convert_content_for_api(messages_for_model)
+
+        await replay.log(
+            "iteration_start",
+            {
+                "iteration": iteration,
+                "message_count": len(api_messages),
+                "tool_count": len(active_tool_definitions),
+                "tools": [tool.get("name") for tool in active_tool_definitions],
+                "loaded_tool_schemas": loaded_tool_names,
+                "history_char_budget": history_char_budget,
+                "context_window": reported_context_window,
+            },
+        )
 
         try:
             streamed_text = False
@@ -922,11 +1005,12 @@ async def run_agent(
                     )
 
             response = await provider.generate(
-                system=full_system_prompt,
-                tools=TOOL_DEFINITIONS,
+                system=iteration_system_prompt,
+                tools=active_tool_definitions,
                 messages=api_messages,
                 max_tokens=AGENT_MAX_TOKENS,
                 temperature=AGENT_TEMPERATURE,
+                enable_thinking=_resolve_enable_thinking_for_chat(reasoning_mode),
                 on_stream_event=provider_stream_event,
             )
             response_provider = response.provider_name or provider.provider_name
@@ -1017,7 +1101,7 @@ async def run_agent(
                         "iterations": iteration,
                         "max_iterations": MAX_ITERATIONS,
                         "context_input_tokens": peak_input_tokens,
-                        "context_window": MODEL_CONTEXT_WINDOW,
+                        "context_window": reported_context_window,
                         "provider": response_provider,
                         "model": response_model,
                         "fallback_used": response.fallback_used,
@@ -1211,11 +1295,6 @@ async def run_agent(
                             },
                         )
 
-                if hasattr(memory, "prepare_messages_for_model"):
-                    messages_for_model = await memory.prepare_messages_for_model(messages)
-                else:
-                    messages_for_model = messages
-                api_messages = _convert_content_for_api(messages_for_model)
                 continue
 
             # Unknown stop reason
@@ -1227,7 +1306,7 @@ async def run_agent(
                     "iterations": iteration,
                     "max_iterations": MAX_ITERATIONS,
                     "context_input_tokens": peak_input_tokens,
-                    "context_window": MODEL_CONTEXT_WINDOW,
+                    "context_window": reported_context_window,
                     "provider": provider.provider_name,
                     "model": provider.model_name,
                     "tool_calls": total_tool_calls,
