@@ -9,6 +9,7 @@ provider_contract:
       - messages
       - max_tokens
       - temperature
+      - enable_thinking?
       - on_stream_event
   implementations:
     - mini-agent/backend/agent/providers/anthropic_provider.py
@@ -17,10 +18,11 @@ provider_contract:
     - mini-agent/backend/agent/providers/failover_provider.py
   selection:
     openai: direct_openai_adapter
-    openai_compat: openai_compatible_router_adapter
+    openai_compat: unified_openai_compatible_gateway_adapter
     anthropic: anthropic_adapter
   fallback_policy:
     enabled_env: AGENT_ENABLE_FALLBACK
+    implicit_litellm_enable_env: AGENT_ENABLE_IMPLICIT_LITELLM_FALLBACKS
     explicit_fallback_envs:
       - AGENT_FALLBACK_PROVIDER
       - AGENT_FALLBACK_BASE_URL
@@ -30,10 +32,19 @@ provider_contract:
       - LITELLM_MODEL_BASE_URL
       - LITELLM_API_KEY
       - LITELLM_MODEL_NAME
-      - LITELLM_2_MODEL_BASE_URL
-      - LITELLM_2_API_KEY
-      - LITELLM_2_MODEL_NAME
     activation_rule: only_on_provider_error_or_empty_payload
+    implicit_router_rule: legacy_model_aliases_may_seed_same_gateway_model_fallbacks_but_multiple_client_facing_gateways_are_no_longer_assumed
+    context_window_rule: retry_same_provider_with_reduced_output_budget_when_upstream_token_counts_are_parseable
+    context_window_failover_rule: do_not_cross_provider_failover_on_context_window_errors
+    context_window_no_tool_fallback_rule: do_not_strip_tools_as_a_fallback_when_the_error_is_request_budget_related
+    preflight_budget_rule: clamp_requested_output_budget_against_effective_context_window_before_send_when_known_or_inferred
+    unified_gateway_rule: openai_compatible_internal_traffic_targets_https_api_aetherpro_tech_v1_by_default
+  reasoning_control:
+    qwen_reasoning_models:
+      - qwen3
+      - qwen3.5
+    production_default_rule: enable_thinking_false_for_direct_answer_flows_unless_explicit_reasoning_mode_is_requested
+    request_override_rule: caller_may_set_enable_thinking_per_request
   openai_direct_contract:
     endpoint: /v1/chat/completions
     token_param_for_gpt5: max_completion_tokens
@@ -41,6 +52,19 @@ provider_contract:
     tool_format: openai_chat_completions_tools
   capabilities:
     image_prompt_blocks_declared_per_provider: true
+    stream_context_retry_supported: true
+    visible_reasoning_normalization_for_compat_models: true
+  env_bootstrap:
+    loader: mini-agent/backend/config/bootstrap.py
+    order:
+      - mini-agent/.env
+      - mini-agent/backend/.env
+      - mini-agent/.env.polymorph
+  compat_output_normalization:
+    think_tag_rule: strip_from_visible_text_and_capture_as_thinking
+    pseudo_tool_call_rule: recover_json_name_plus_arguments_patterns_into_real_tool_calls_when_tool_is_registered
+    planning_scaffold_rule: suppress_visible_step_by_step_tool_planning_when_recovered_tool_call_exists
+    text_streaming_rule: buffer_openai_compat_text_until_final_normalization
 api_contract:
   base_service: mini-agent/backend
   routes:
@@ -56,6 +80,14 @@ api_contract:
       path: /api/connections/test
     - method: POST
       path: /api/connections/save
+    - method: GET
+      path: /api/channels
+    - method: GET
+      path: /api/channels/{channel_id}
+    - method: POST
+      path: /api/channels/telegram/sync-webhook
+    - method: POST
+      path: /api/channels/telegram/webhook
     - method: POST
       path: /api/audio/transcribe
     - method: POST
@@ -94,8 +126,16 @@ api_contract:
       - provider
       - model
       - voice_id
-      - mime_type
-      - audio_url
+      - tts_transport
+      - audio_url?
+      - mime_type?
+      - tts_stream_session_id?
+      - tts_stream_ws_url?
+      - tts_stream_http_base_url?
+      - tts_stream_model_requested?
+      - tts_stream_model_used?
+      - tts_stream_fallback_used?
+      - tts_stream_runtime?
     routing:
       voice_model_envs:
         - VOICE_AGENT_PROVIDER
@@ -103,11 +143,19 @@ api_contract:
         - VOICE_AGENT_API_KEY
         - VOICE_AGENT_MODEL
       default_model_target: qwen3.5-4b
-      tts_output_route: /api/voice/audio/{session_id}/{filename}
+      tts_output_route: realtime_tts_stream_primary_http_audio_fallback_secondary
 tool_contract:
   registry: mini-agent/backend/agent/tools/registry.py
   dispatch: mini-agent/backend/agent/tools/registry.py
   workspace_pattern: workspaces/<session_id>/
+  prompt_exposure_rule: model_receives_a_per_turn_selected_subset_of_tools_not_the_full_registry
+  history_compaction_rule: message_history_compaction_should_respect_effective_context_window_for_the_active_iteration
+  manifest_path: mini-agent/backend/TOOLS.md
+  manifest_loader: mini-agent/backend/agent/tools/manifest.py
+  core_tools_are_always_exposed: true
+  dynamic_tools_require_schema_load: true
+  schema_loader_tool: read_tool_schema
+  session_loaded_schema_key: loaded_tool_schemas
 memory_contract:
   service: mini-agent/backend/memory/service.py
   backends:
@@ -163,6 +211,24 @@ voice_http_tts_contract:
   synthesis_route: /tts
   default_voice_env: VOICE_TTS_PREDEFINED_VOICE_ID
   default_voice_value: Emily.wav
+voice_realtime_tts_contract:
+  bootstrap_rule: backend_starts_gateway_stream_and_returns_ws_bootstrap_via_voice_turn
+  bootstrap_base_envs:
+    - VOICE_REALTIME_TTS_BASE_URL
+    - VOICE_REALTIME_TTS_API_KEY
+    - ASR_BASE_URL
+    - ASR_API_KEY
+  start_route: /api/v1/tts/stream/start
+  websocket_messages:
+    client:
+      - text_chunk
+      - text_complete
+      - end_stream
+    server:
+      - audio_chunk
+      - final_audio
+      - error
+  playback_rule: browser_plays_audio_chunk_events_immediately_and_persists_final_audio_url_when_available
 fleet_operator_contract:
   inventory_dir: fleet-inventory
   canonical_sources:
@@ -198,3 +264,39 @@ fleet_operator_contract:
     - check_stack_health
     - audit_fleet_scripts
     - plan_model_deployment
+channel_control_contract:
+  modules:
+    base: mini-agent/backend/channels/base.py
+    manager: mini-agent/backend/channels/manager.py
+    dispatcher: mini-agent/backend/channels/dispatcher.py
+    telegram: mini-agent/backend/channels/telegram.py
+    api: mini-agent/backend/api/channels.py
+  routes:
+    - GET /api/channels
+    - GET /api/channels/{channel_id}
+    - POST /api/channels/telegram/sync-webhook
+    - POST /api/channels/telegram/webhook
+  runtime_envs:
+    - CHANNELS_RUNTIME_ENABLED
+    - CHANNELS_DEFAULT_ROUTE
+    - CHANNELS_SESSION_NAMESPACE
+  telegram_envs:
+    - CHANNELS_TELEGRAM_ENABLED
+    - CHANNELS_TELEGRAM_BOT_TOKEN
+    - CHANNELS_TELEGRAM_WEBHOOK_URL
+    - CHANNELS_TELEGRAM_WEBHOOK_SECRET
+    - CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS
+    - CHANNELS_TELEGRAM_SESSION_SCOPE
+  rules:
+    - mcas_is_reference_only_not_active_runtime
+    - keep_channel_adapters_separate_from_provider_routing
+    - use_connections_panel_as_config_surface
+    - do_not_modify_primary_model_envs_in_channel_pass
+    - telegram_runtime_currently_uses_webhook_bridge_first
+prompt_contract:
+  temporal_context_default: enabled
+  temporal_context_shape: compact_structured_block
+  harness_metadata_prompt_default: disabled
+  tools_bootstrap_source: mini-agent/backend/TOOLS.md
+  visible_tool_planning_default: disallowed
+  visible_chain_of_thought_default: disallowed

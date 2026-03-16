@@ -1,46 +1,50 @@
 # BUILD_PLAN
 
 ## Goal
-Implement the internal Polymorph fleet-aware operator layer so the agent can reason over the real 3-node topology from `fleet-inventory/` and execute safe node-aware helper workflows over the existing SSH/Tailscale access path.
+Refactor PolyMorph and related routing/config assumptions to use one canonical client-facing gateway:
+
+`https://api.aetherpro.tech/v1`
+
+This is a control-plane simplification pass. Remote model nodes remain worker backends behind the unified gateway. Client code should keep choosing model names while the gateway handles backend routing.
 
 ## Phases
-1. Read and normalize the authoritative fleet inventory from `fleet-inventory/` without inventing missing paths or assuming mount parity across nodes.
-2. Implement backend fleet modules for:
-   - inventory loading and normalization
-   - fleet queries and capability selection
-   - helper script catalog + mismatch detection
-   - SSH/Tailscale-backed execution with dry-run and approval gates
-3. Expose inventory-aware internal operator actions in the backend tool layer:
-   - status/inventory/model lookup
-   - GPU, disk, docker, compose, and stack helpers
-   - deployment planning support
-4. Verify the loader and script audit against the actual `fleet-inventory/` files and produce concise implementation notes with mismatches and TODOs.
+1. Audit gateway assumptions
+   - locate hardcoded or split LiteLLM base URLs
+   - identify any gateway-1/gateway-2 or per-node client-facing assumptions
+   - read the unified gateway runbook and align current project-state/docs
+2. Refactor canonical routing
+   - replace split client-facing gateway bases with the unified gateway base
+   - preserve model-name-based routing semantics
+   - keep direct OpenAI handling separate where it is intentionally direct vendor traffic
+3. Add Qwen reasoning-mode control
+   - make Qwen3/Qwen3.5 `enable_thinking` controllable in request-building
+   - default production/direct-answer flows to `enable_thinking=false`
+   - allow explicit reasoning-mode opt-in per request/route for models like `qwen3.5-122`
+4. Verification and state updates
+   - run targeted compile/smoke checks
+   - update project-state/runtime docs to reflect the unified gateway architecture
+   - produce a concise implementation summary
 
 ## Dependencies And Assumptions
-- `fleet-inventory/` is the only source of truth for node/storage/operator facts in this pass.
-- YAML inventories and markdown summaries are canonical; text tree captures provide supporting detail and must not be over-expanded into fake trees.
-- Internal operator mode is allowed to use SSH/Tailscale-backed execution; product-surface constraints do not apply here.
-- Destructive actions must remain approval-gated even in internal mode.
-- Existing backend tool dispatch should remain the invocation surface unless a new API layer is strictly required.
+- The unified gateway runbook in `runbooks/UNIFIED_GATEWAY_RUNBOOK.md` is the routing truth for this change.
+- `https://api.aetherpro.tech/v1` is now the canonical OpenAI-compatible base for internal harness traffic.
+- Remote model workers should not be treated as separate client-facing API bases unless a path is explicitly marked as internal diagnostics.
+- Direct OpenAI vendor traffic remains a separate adapter path and should not be collapsed into the unified internal gateway.
 
 ## Test Strategy And Acceptance Checks
-- Load all fleet YAML files into one runtime inventory object without validation errors.
-- Verify node differences are preserved:
-  - `l40s-180` split storage roots
-  - `l4-360` dense mixed model store
-  - `l40s-90` documented non-mount compose/control root
-- Verify script audit output correctly classifies inputs, execution mode, and mismatches for every script in `fleet-inventory/scripts/`.
-- Verify dry-run execution produces structured command previews without mutating anything.
-- Verify destructive actions are blocked unless explicit approval is supplied.
-- Run targeted Python compile/import checks on changed backend modules.
+- Search results show no remaining client-facing “gateway 1 / gateway 2” assumptions in active harness code/config.
+- Unified gateway base is used consistently for OpenAI-compatible internal routing defaults.
+- Qwen3/Qwen3.5 production chat requests send `extra_body.chat_template_kwargs.enable_thinking=false` by default.
+- At least one code path supports explicit reasoning-mode opt-in without changing model-selection semantics.
+- Edited Python/TS files pass syntax/build-adjacent checks that are practical in-repo.
+- Project-state docs reflect the new one-gateway-many-workers model.
 
 ## Risks
-- Inventory files disagree in a few places on status wording or path casing, so normalization must preserve the documented truth rather than flattening it incorrectly.
-- Helper scripts may encode assumptions that are narrower than the manifest allows.
-- SSH execution safety can regress if command/path validation is too loose.
-- Compose roots are documented outside some block-storage trees, so path checks must handle non-mount roots explicitly.
+- Some files may intentionally reference per-node URLs for diagnostics or infrastructure docs; those should not be blindly flattened.
+- Existing runtime overrides in saved config may still point to old bases even after code defaults are fixed.
+- Reasoning-mode defaults can change output behavior for Qwen-family models, so the production-vs-reasoning distinction must stay explicit.
 
 ## Rollback
-- Keep the new fleet modules isolated so they can be disabled from tool registration if needed.
-- Leave execution in dry-run mode by default if any remote-safety concern remains unresolved.
-- Fall back to read-only inventory/status actions if stack-control actions need tighter gating.
+- Keep model-name routing unchanged so reverting the base-url simplification is isolated to config/request-building layers.
+- Limit code changes to routing/config/request construction rather than tool semantics.
+- If Qwen reasoning defaults cause regressions, revert the default toggle while preserving the new per-request control hooks.

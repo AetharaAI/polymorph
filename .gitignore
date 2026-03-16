@@ -81,6 +81,9 @@ temp/
 *.db
 *.db-*
 
+# Local imported workspaces pending selective integration
+/mcas/
+
 # Editor / OS noise
 .DS_Store
 Thumbs.db

@@ -10,6 +10,21 @@ important_paths:
   harness_backend:
     path: mini-agent/backend
     purpose: api_runtime_providers_tools_memory
+  harness_tools_manifest:
+    path: mini-agent/backend/TOOLS.md
+    purpose: prompt_facing_tool_bootstrap_manifest
+  harness_tools_manifest_loader:
+    path: mini-agent/backend/agent/tools/manifest.py
+    purpose: tool_manifest_loader_and_prompt_exposure_logic
+  harness_config_bootstrap:
+    path: mini-agent/backend/config/bootstrap.py
+    purpose: canonical_env_stack_loading_for_backend_runtime
+  harness_channels:
+    path: mini-agent/backend/channels
+    purpose: internal_channel_control_plane_and_adapters
+  harness_benchmark_tool_ref:
+    path: HARNESS_TOOL_REFERENCE.md
+    purpose: benchmark_generation_reference_for_exact_harness_tools
   harness_frontend:
     path: mini-agent/frontend
     purpose: operator_ui
@@ -46,5 +61,6 @@ important_paths:
 entrypoints:
   backend_main: mini-agent/backend/main.py
   agent_loop: mini-agent/backend/agent/runner.py
+  channel_api: mini-agent/backend/api/channels.py
   tool_registry: mini-agent/backend/agent/tools/registry.py
   provider_base: mini-agent/backend/agent/providers/base.py
