@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from backend.agent.providers import get_provider, provider_metadata
 from backend.agent.providers.factory import get_multimodal_audio_provider
-from backend.agent.providers.base import LLMContentBlock
+from backend.agent.providers.base import BaseLLMProvider, LLMContentBlock
 from backend.agent.skills import build_skills_prompt
 from backend.agent.telemetry import SessionReplayLogger
 from backend.agent.tools import TOOL_DEFINITIONS, dispatch_tool
@@ -742,6 +742,7 @@ async def run_agent(
     reasoning_mode: str | None = None,
     audio_input: dict[str, Any] | None = None,
     audio_url: dict[str, Any] | None = None,
+    provider_override: BaseLLMProvider | None = None,
 ) -> None:
     """Run the autonomous tool loop for a session."""
 
@@ -758,7 +759,7 @@ async def run_agent(
             }
         )
         return
-    provider = multimodal_provider or get_provider()
+    provider = provider_override or multimodal_provider or get_provider()
     replay = SessionReplayLogger(session_id=session_id, enabled=ENABLE_REPLAY_LOGS)
 
     await replay.log(
@@ -1154,6 +1155,15 @@ async def run_agent(
                     tool_id = block.id or f"tool_{iteration}_{idx}"
                     tool_name = block.name or ""
                     tool_input = block.input or {}
+
+                    await stream_callback(
+                        {
+                            "type": "tool_call",
+                            "tool_name": tool_name,
+                            "tool_id": tool_id,
+                            "input": tool_input,
+                        }
+                    )
 
                     if idx >= allowed_calls:
                         result = "Error: Tool call skipped by governance limits. Continue in next iteration if required."

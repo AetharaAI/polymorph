@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import { VoiceConfig, VoiceMessage } from '@/lib/types';
+import { ToolCall, VoiceConfig, VoiceMessage } from '@/lib/types';
+import { ToolCallCard } from './ToolCallCard';
 
 interface VoicePanelProps {
   messages: VoiceMessage[];
@@ -11,6 +12,41 @@ interface VoicePanelProps {
   config: VoiceConfig | null;
   selectedVoiceId: string | null;
   onVoiceIdChange: (voiceId: string) => void;
+}
+
+function buildVoiceToolCards(message: VoiceMessage): ToolCall[] {
+  const events = Array.isArray(message.tool_events) ? message.tool_events : [];
+  const calls = new Map<string, ToolCall>();
+
+  for (const event of events) {
+    const toolId = String(event.tool_id || '');
+    if (event.type === 'tool_call') {
+      calls.set(toolId || `voice-tool-${calls.size + 1}`, {
+        tool_name: String(event.tool_name || 'tool'),
+        tool_id: toolId || `voice-tool-${calls.size + 1}`,
+        input: event.input || {},
+        status: 'loading',
+      });
+      continue;
+    }
+    if (event.type === 'tool_result') {
+      const existing = calls.get(toolId);
+      if (existing) {
+        existing.status = 'completed';
+        existing.result = String(event.result || '');
+        continue;
+      }
+      calls.set(toolId || `voice-tool-${calls.size + 1}`, {
+        tool_name: 'tool',
+        tool_id: toolId || `voice-tool-${calls.size + 1}`,
+        input: {},
+        status: 'completed',
+        result: String(event.result || ''),
+      });
+    }
+  }
+
+  return Array.from(calls.values());
 }
 
 export function VoicePanel({
@@ -54,7 +90,9 @@ export function VoicePanel({
           <span>PolyMorph Voice Mode</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          {config ? `${config.model} via ${config.provider}` : 'Loading voice config...'}
+          {config
+            ? `${config.model} via ${config.provider} • ${config.model_source}${config.fallback_model ? ` • fallback ${config.fallback_model}` : ''}${config.available_models.length ? ` • ${config.available_models.length} live models` : ''}`
+            : 'Loading voice config...'}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <label htmlFor="voice-select" className="text-xs text-muted-foreground">
@@ -79,7 +117,19 @@ export function VoicePanel({
       <div ref={containerRef} className="max-h-64 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="rounded-xl border border-dashed border-border bg-card/60 p-3 text-sm text-muted-foreground">
-            Voice turns land here instead of the main tool-using chat. The mic button now uses live ASR and the voice button sends the finalized transcript into this pane.
+            Voice turns land here instead of the main text pane. The mic button still uses live ASR, and the voice button sends the finalized transcript through the full agent loop before audio playback lands here.
+          </div>
+        )}
+
+        {config?.model_available_in_catalog === false && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+            The configured voice model `{config.model}` was not found in the live gateway model catalog.
+          </div>
+        )}
+
+        {config?.model_catalog_error && (
+          <div className="rounded-xl border border-border bg-card/60 p-3 text-xs text-muted-foreground">
+            Live model catalog probe: {config.model_catalog_error}
           </div>
         )}
 
@@ -96,6 +146,13 @@ export function VoicePanel({
               {message.role === 'user' ? 'You' : `Voice Agent${message.model ? ` • ${message.model}` : ''}`}
             </div>
             <div className="whitespace-pre-wrap break-words">{message.text}</div>
+            {message.role === 'assistant' && (message.requested_model || message.provider || message.fallback_used) && (
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                {message.provider ? `${message.provider}` : 'voice-agent'}
+                {message.requested_model && message.requested_model !== message.model ? ` • requested ${message.requested_model}` : ''}
+                {message.fallback_used ? ' • fallback used' : ''}
+              </div>
+            )}
             {message.role === 'assistant' && message.stream_state && (
               <div className="mt-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                 {message.transport === 'realtime_stream'
@@ -103,6 +160,14 @@ export function VoicePanel({
                   : `Audio • ${message.stream_state}`}
               </div>
             )}
+            {message.provider_notice && (
+              <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">
+                {message.provider_notice}
+              </div>
+            )}
+            {message.role === 'assistant' && buildVoiceToolCards(message).map(toolCall => (
+              <ToolCallCard key={toolCall.tool_id} toolCall={toolCall} />
+            ))}
             {message.audio_url && (
               <audio className="mt-2 w-full" controls preload="none" src={message.audio_url} />
             )}

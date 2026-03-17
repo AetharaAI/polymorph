@@ -402,7 +402,10 @@ export async function startLiveAsrStream(
 export interface VoiceConfigResponse {
   configured: boolean;
   model: string;
+  fallback_model?: string | null;
+  model_source: string;
   provider: string;
+  base_url: string;
   transport: string;
   realtime_tts_configured: boolean;
   realtime_tts_model: string;
@@ -413,6 +416,15 @@ export interface VoiceConfigResponse {
     id: string;
     label: string;
   }>;
+  available_models: Array<{
+    id: string;
+    label: string;
+    kind?: string;
+    status?: string;
+  }>;
+  model_catalog_source?: string | null;
+  model_catalog_error?: string | null;
+  model_available_in_catalog?: boolean | null;
   notes: string[];
 }
 
@@ -432,10 +444,27 @@ interface VoiceTurnHistoryItem {
 
 export interface VoiceTurnResponse {
   assistant_text: string;
+  tool_events?: Array<{
+    type: 'tool_call' | 'tool_result';
+    tool_name?: string;
+    tool_id?: string;
+    input?: Record<string, unknown>;
+    result?: string;
+  }>;
   provider: string;
   model: string;
+  requested_model?: string | null;
+  llm_provider?: string | null;
+  llm_model_requested?: string | null;
+  llm_model_used?: string | null;
+  llm_base_url?: string | null;
+  llm_fallback_used?: boolean;
+  llm_notice?: string | null;
   voice_id: string;
   tts_transport: string;
+  tts_model_requested?: string | null;
+  tts_model_used?: string | null;
+  tts_base_url?: string | null;
   mime_type?: string | null;
   audio_url?: string | null;
   tts_stream_session_id?: string | null;

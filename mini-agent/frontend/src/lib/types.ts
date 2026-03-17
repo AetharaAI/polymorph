@@ -177,6 +177,17 @@ export interface VoiceMessage {
   timestamp: number;
   audio_url?: string;
   model?: string;
+  requested_model?: string;
+  provider?: string;
+  provider_notice?: string;
+  fallback_used?: boolean;
+  tool_events?: Array<{
+    type: 'tool_call' | 'tool_result';
+    tool_name?: string;
+    tool_id?: string;
+    input?: Record<string, unknown>;
+    result?: string;
+  }>;
   voice_id?: string;
   transport?: string;
   stream_state?: 'starting' | 'streaming' | 'completed' | 'error';
@@ -185,7 +196,10 @@ export interface VoiceMessage {
 export interface VoiceConfig {
   configured: boolean;
   model: string;
+  fallback_model?: string | null;
+  model_source: string;
   provider: string;
+  base_url: string;
   transport: string;
   realtime_tts_configured: boolean;
   realtime_tts_model: string;
@@ -196,5 +210,14 @@ export interface VoiceConfig {
     id: string;
     label: string;
   }>;
+  available_models: Array<{
+    id: string;
+    label: string;
+    kind?: string;
+    status?: string;
+  }>;
+  model_catalog_source?: string | null;
+  model_catalog_error?: string | null;
+  model_available_in_catalog?: boolean | null;
   notes: string[];
 }

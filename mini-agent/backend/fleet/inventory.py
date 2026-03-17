@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Any
 import re
@@ -9,7 +10,23 @@ import re
 import yaml
 
 
-FLEET_DIR = Path(__file__).resolve().parents[3] / "fleet-inventory"
+def _resolve_fleet_dir() -> Path:
+    override = os.getenv("FLEET_INVENTORY_DIR", "").strip()
+    candidates = [
+        Path(override) if override else None,
+        Path(__file__).resolve().parents[3] / "fleet-inventory",
+        Path(__file__).resolve().parents[2] / "fleet-inventory",
+        Path("/app/fleet-inventory"),
+        Path("/app/backend/fleet-inventory"),
+        Path.cwd() / "fleet-inventory",
+    ]
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate.resolve()
+    return (Path(__file__).resolve().parents[2] / "fleet-inventory").resolve()
+
+
+FLEET_DIR = _resolve_fleet_dir()
 MODEL_TAGS = {
     "agent",
     "asr",
@@ -263,11 +280,15 @@ class FleetInventory:
 
 
 def _load_yaml(path: Path) -> Any:
+    if not path.exists():
+        return {}
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or {}
 
 
 def _read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
     return path.read_text(encoding="utf-8")
 
 
