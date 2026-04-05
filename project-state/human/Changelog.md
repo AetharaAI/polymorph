@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-05
+- Scrubbed a leaked Twilio Account SID from `3-good-calls-still-need-polsh-but-good-03-16-2026-last-call-of -the-night.md` and republished `main` cleanly after GitHub push-protection blocked the previous commit.
+- Added a run-level completion gate in `mini-agent/backend/agent/runner.py` so prompts that declare explicit required artifact filenames (for example `/workspace/...`) cannot end as `done` until those artifacts are actually written via tool calls.
+- Added replay logging for missing-required-artifact gate events to make future benchmark miss cases directly diagnosable from session telemetry.
+
 ## 2026-04-02
 - Added a narrow OpenAI-compatible model-compatibility adapter path for MiroThinker-style outputs via `xml_mcp_reasoning`.
 - Implemented parsing channels for `<think>` reasoning, `<use_mcp_tool>` XML intent, and final answer text while preserving raw output in compatibility telemetry logs.

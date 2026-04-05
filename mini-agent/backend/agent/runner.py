@@ -97,6 +97,11 @@ VERIFY_KEYWORDS = {
     "benchmark",
 }
 
+REQUIRED_ARTIFACT_PATH_RE = re.compile(r"(?i)(/workspace/[A-Za-z0-9._/\-]+)")
+REQUIRED_ARTIFACT_BASENAME_RE = re.compile(
+    r"(?im)^\s*\d+\.\s*(?:`([^`]+)`|([A-Za-z0-9._-]+\.(?:md|csv|json|txt|yaml|yml)))\s*$"
+)
+
 
 def _parse_iso_datetime(raw: str | None) -> datetime | None:
     text = (raw or "").strip()
@@ -748,6 +753,30 @@ def _apply_verification_guard(
     return patched, True
 
 
+def _extract_required_artifact_filenames(user_message: str) -> set[str]:
+    text = str(user_message or "")
+    if not text.strip():
+        return set()
+
+    required: set[str] = set()
+
+    for match in REQUIRED_ARTIFACT_PATH_RE.finditer(text):
+        path_text = str(match.group(1) or "").strip()
+        if not path_text:
+            continue
+        required.add(Path(path_text).name.lower())
+
+    for match in REQUIRED_ARTIFACT_BASENAME_RE.finditer(text):
+        candidate = str(match.group(1) or match.group(2) or "").strip()
+        if not candidate:
+            continue
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            continue
+        required.add(Path(candidate.replace("\\", "/")).name.lower())
+
+    return {name for name in required if name}
+
+
 async def run_agent(
     session_id: str,
     user_message: str,
@@ -967,6 +996,8 @@ async def run_agent(
     peak_input_tokens = 0
     total_tool_calls = 0
     tools_used: set[str] = set()
+    required_artifacts = _extract_required_artifact_filenames(user_message)
+    written_artifacts: set[str] = set()
     reported_context_window = _resolve_effective_context_window(provider, AGENT_MAX_TOKENS)
 
     while iteration < MAX_ITERATIONS:
@@ -1118,6 +1149,39 @@ async def run_agent(
                     content_dicts=content_dicts,
                     tools_used=tools_used,
                 )
+
+                missing_artifacts = sorted(
+                    name for name in required_artifacts if name not in written_artifacts
+                )
+                if missing_artifacts:
+                    reminder = (
+                        "Harness completion gate: required artifacts are still missing: "
+                        + ", ".join(missing_artifacts)
+                        + ". Continue the run and write these files with write_file before finalizing."
+                    )
+                    await stream_callback({"type": "text", "text": f"\n\n{reminder}"})
+                    content_with_gate = [*content_dicts, {"type": "text", "text": f"\n\n{reminder}"}]
+                    messages.append({"role": "assistant", "content": content_with_gate})
+                    messages.append({"role": "user", "content": [{"type": "text", "text": reminder}]})
+                    await memory.save_messages(session_id, _sanitize_messages_for_persistence(messages))
+                    await memory.update_session_state(
+                        session_id,
+                        {
+                            "status": "running",
+                            "next_step": "Write all required artifacts before concluding.",
+                            "last_summary": _extract_text(content_with_gate)[:700],
+                        },
+                    )
+                    await replay.log(
+                        "completion_gate_missing_artifacts",
+                        {
+                            "iteration": iteration,
+                            "missing_artifacts": missing_artifacts,
+                            "required_artifacts": sorted(required_artifacts),
+                            "written_artifacts": sorted(written_artifacts),
+                        },
+                    )
+                    continue
 
                 if verification_flagged:
                     await stream_callback(
@@ -1339,6 +1403,9 @@ async def run_agent(
                         session_id=session_id,
                     )
                     if file_info and file_info.get("file_id") and file_info.get("filename"):
+                        filename = str(file_info.get("filename") or "").strip().lower()
+                        if filename:
+                            written_artifacts.add(filename)
                         if str(file_info.get("filename", "")).lower() == "build_plan.md":
                             plan_artifact_written = True
                         await stream_callback(
