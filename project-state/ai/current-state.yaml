@@ -51,6 +51,7 @@ runtime:
   openai_compat_visible_reasoning_normalization_enabled: true
   openai_compat_raw_text_streaming_deferred_until_normalization: true
   openai_compat_model_selectable_xml_mcp_reasoning_compat_enabled: true
+  openai_compat_xml_mcp_reasoning_malformed_tool_wrapper_recovery_enabled: true
   openai_compat_model_compat_mode_envs:
     - OPENAI_COMPAT_MODEL_COMPAT_MODE
     - OPENAI_COMPAT_MODEL_COMPAT_MODE_MAP_JSON

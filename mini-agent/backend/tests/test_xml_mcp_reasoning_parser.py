@@ -81,6 +81,45 @@ class XMLMCPReasoningParserTests(unittest.TestCase):
         self.assertEqual(parsed.final_answer_channel, "Plain answer with no tags.")
         self.assertEqual(len(parsed.tool_call_channel), 0)
 
+    def test_generic_tool_block_json_payload_is_recovered(self) -> None:
+        text = (
+            "<tool>"
+            "{\"name\":\"write_file\",\"arguments\":{\"filename\":\"00_run_journal.md\",\"content\":\"ok\"}}"
+            "</tool_call>"
+            "Done."
+        )
+        parsed = parse_xml_mcp_reasoning_output(
+            text,
+            available_tool_names={"write_file"},
+            allowed_server_names={"harness"},
+        )
+        self.assertEqual(len(parsed.tool_call_channel), 1)
+        call = parsed.tool_call_channel[0]
+        self.assertTrue(call.allowed)
+        self.assertEqual(call.server_name, "harness")
+        self.assertEqual(call.tool_name, "write_file")
+        self.assertEqual(call.arguments, {"filename": "00_run_journal.md", "content": "ok"})
+        self.assertEqual(parsed.final_answer_channel, "Done.")
+
+    def test_missing_server_name_defaults_to_harness(self) -> None:
+        text = (
+            "<use_mcp_tool>"
+            "<tool_name>list_files</tool_name>"
+            "<arguments>{}</arguments>"
+            "</use_mcp_tool>"
+        )
+        parsed = parse_xml_mcp_reasoning_output(
+            text,
+            available_tool_names={"list_files"},
+            allowed_server_names={"harness"},
+        )
+        self.assertEqual(len(parsed.tool_call_channel), 1)
+        call = parsed.tool_call_channel[0]
+        self.assertTrue(call.allowed)
+        self.assertEqual(call.server_name, "harness")
+        self.assertEqual(call.tool_name, "list_files")
+        self.assertEqual(call.arguments, {})
+
 
 if __name__ == "__main__":
     unittest.main()

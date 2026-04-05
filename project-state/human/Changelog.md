@@ -6,6 +6,7 @@
 - Added replay logging for missing-required-artifact gate events to make future benchmark miss cases directly diagnosable from session telemetry.
 - Added first-class Firecrawl tools (`firecrawl_scrape`, `firecrawl_interact`) in the runtime tool registry and wired `scrape_page` to prefer Firecrawl automatically when `FIRECRAWL_API_KEY` is configured.
 - Updated tool-manifest docs and verification skill metadata so Firecrawl appears in dynamic research-tool discovery via `read_tool_schema`.
+- Hardened the `xml_mcp_reasoning` compatibility parser for MiroThinker-style mixed output: it now recovers tool intents from `<tool>...</tool_call>` wrappers and JSON payload blocks, defaults missing `server_name` to `harness`, and strips recovered scaffolding from the visible final answer path.
 
 ## 2026-04-02
 - Added a narrow OpenAI-compatible model-compatibility adapter path for MiroThinker-style outputs via `xml_mcp_reasoning`.
