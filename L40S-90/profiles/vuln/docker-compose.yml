@@ -1,0 +1,103 @@
+networks:
+  aether-ops:
+    external: true
+services:
+  qwen3.5-2b-high:
+    image: vllm/vllm-openai:nightly
+    container_name: qwen3.5-2b-high
+    runtime: nvidia
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/qwen3.5-2b-high:/logs
+    ports:
+      - "8101:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Authorization: Bearer EMPTY' http://localhost:8000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+    command: >
+      /models/llm/DavidAU/Qwen3.5-2B-Polaris-HighIQ-Thinking-Compact
+      --trust-remote-code
+      --served-model-name qwen3.5-2b-high
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --kv-cache-dtype fp8
+      --gpu-memory-utilization 0.22
+      --max-model-len 8192
+      --max-num-seqs 3
+      --max-num-batched-tokens 8192
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --enforce-eager
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --generation-config vllm
+      --api-key EMPTY
+    restart: unless-stopped
+
+  # BLUE/VULN: Specialized vuln scanner
+  vulnllm-r-7b:
+    image: vllm/vllm-openai:nightly
+    container_name: vulnllm-r-7b
+    runtime: nvidia
+    networks:
+      - aether-ops
+    depends_on:
+      qwen3.5-2b-high:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/vulnllm-r-7b:/logs
+    ports:
+      - "8102:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/models >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    command: >
+      /models/llm/cyankiwi/VulnLLM-R-7B-AWQ-8bit
+      --served-model-name vulnllm-r-7b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --quantization awq_marlin
+      --gpu-memory-utilization 0.57
+      --max-model-len 16384
+      --max-num-seqs 4
+      --max-num-batched-tokens 8192
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --generation-config vllm
+      --trust-remote-code
+      --api-key EMPTY
+    restart: unless-stopped

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioLines, Check, Loader2, Mic, Send } from 'lucide-react';
 import { FileAttachment } from '@/lib/types';
 import { useLiveAsrStream } from '@/hooks/useLiveAsrStream';
@@ -24,6 +24,13 @@ function appendTranscript(previous: string, transcript: string): string {
   return `${prefix}${prefix.endsWith('\n') ? '' : '\n'}${next}`;
 }
 
+function logVoiceSession(event: string, payload: Record<string, unknown> = {}) {
+  console.info('[VoiceSession]', {
+    event,
+    ...payload,
+  });
+}
+
 export function InputBar({
   onSend,
   onVoiceTurn,
@@ -35,7 +42,11 @@ export function InputBar({
 }: InputBarProps) {
   const [text, setText] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isVoiceSessionActive, setIsVoiceSessionActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const voiceSessionActiveRef = useRef(false);
+  const voiceTurnInFlightRef = useRef(false);
+  const startVoiceCaptureRef = useRef<(() => Promise<void>) | null>(null);
   const {
     isRecording,
     isFinalizing,
@@ -45,6 +56,7 @@ export function InputBar({
     error: recordingError,
     start,
     stop,
+    cancel,
   } = useLiveAsrStream();
 
   useEffect(() => {
@@ -53,6 +65,18 @@ export function InputBar({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   }, [text]);
+
+  useEffect(() => {
+    voiceSessionActiveRef.current = isVoiceSessionActive;
+  }, [isVoiceSessionActive]);
+
+  const stopVoiceSession = useCallback(() => {
+    logVoiceSession('stop_requested');
+    voiceSessionActiveRef.current = false;
+    voiceTurnInFlightRef.current = false;
+    setIsVoiceSessionActive(false);
+    cancel({ preserveTranscript: false });
+  }, [cancel]);
 
   const handleSend = () => {
     if (!text.trim() && files.length === 0) return;
@@ -72,7 +96,8 @@ export function InputBar({
   };
 
   const handleStartRecording = async (mode: 'asr' | 'voice') => {
-    if (isLoading || isVoiceLoading || isRecording || isFinalizing) return;
+    if (mode === 'voice') return;
+    if (isLoading || isVoiceLoading || isRecording || isFinalizing || isVoiceSessionActive) return;
     setSubmitError(null);
     try {
       await start(mode);
@@ -82,7 +107,7 @@ export function InputBar({
   };
 
   const handleStopRecording = async () => {
-    if (!recordingMode) return;
+    if (!recordingMode || recordingMode !== 'asr') return;
     setSubmitError(null);
 
     try {
@@ -92,21 +117,96 @@ export function InputBar({
         throw new Error('Live ASR returned an empty final transcript.');
       }
 
-      if (recordingMode === 'voice') {
-        await Promise.resolve(onVoiceTurn(finalText));
-      } else {
-        setText(previous => appendTranscript(previous, finalText));
-      }
+      setText(previous => appendTranscript(previous, finalText));
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to finalize the live transcript.');
     }
   };
 
+  const startVoiceCapture = useCallback(async () => {
+    await start('voice', {
+      onFinalTranscript: async transcript => {
+        const finalText = transcript.trim();
+        if (!voiceSessionActiveRef.current || !finalText || voiceTurnInFlightRef.current) {
+          return;
+        }
+
+        logVoiceSession('turn_committed', {
+          chars: finalText.length,
+          preview: finalText.slice(0, 160),
+        });
+        voiceTurnInFlightRef.current = true;
+        cancel({ preserveTranscript: true });
+
+        try {
+          logVoiceSession('turn_dispatch_start');
+          await Promise.resolve(onVoiceTurn(finalText));
+          logVoiceSession('turn_dispatch_success');
+        } catch (error) {
+          logVoiceSession('turn_dispatch_failed', {
+            message: error instanceof Error ? error.message : 'Voice mode failed.',
+          });
+          setSubmitError(error instanceof Error ? error.message : 'Voice mode failed.');
+          stopVoiceSession();
+          return;
+        } finally {
+          voiceTurnInFlightRef.current = false;
+        }
+
+        if (!voiceSessionActiveRef.current) {
+          return;
+        }
+
+        try {
+          logVoiceSession('resume_listening');
+          await startVoiceCaptureRef.current?.();
+        } catch (error) {
+          logVoiceSession('resume_failed', {
+            message: error instanceof Error ? error.message : 'Unable to resume live voice mode.',
+          });
+          setSubmitError(error instanceof Error ? error.message : 'Unable to resume live voice mode.');
+          stopVoiceSession();
+        }
+      },
+    });
+  }, [cancel, onVoiceTurn, start, stopVoiceSession]);
+
+  useEffect(() => {
+    startVoiceCaptureRef.current = startVoiceCapture;
+  }, [startVoiceCapture]);
+
+  const handleToggleVoiceSession = async () => {
+    if (isVoiceSessionActive) {
+      stopVoiceSession();
+      return;
+    }
+
+    if (isLoading || isFinalizing || (isRecording && recordingMode === 'asr')) return;
+
+    setSubmitError(null);
+    setIsVoiceSessionActive(true);
+    voiceSessionActiveRef.current = true;
+    logVoiceSession('session_start_requested');
+
+    try {
+      await startVoiceCapture();
+      logVoiceSession('session_started');
+    } catch (error) {
+      logVoiceSession('session_start_failed', {
+        message: error instanceof Error ? error.message : 'Unable to start live voice mode.',
+      });
+      setSubmitError(error instanceof Error ? error.message : 'Unable to start live voice mode.');
+      stopVoiceSession();
+    }
+  };
+
   const statusError = submitError || recordingError;
-  const isBusy = isRecording || isFinalizing;
+  const isMicCaptureActive = isRecording && recordingMode === 'asr';
+  const isMicBusy = isMicCaptureActive || isFinalizing;
+  const isBusy = isMicBusy || isVoiceSessionActive;
 
   return (
-    <div className="border-t border-border bg-card p-4">
+    <div className="shrink-0 border-t border-border bg-card p-4">
       <FileAttachments
         files={files}
         onRemove={onRemoveFile}
@@ -138,35 +238,7 @@ export function InputBar({
           </div>
         )}
 
-        {!isRecording ? (
-          <>
-            <button
-              onClick={() => void handleStartRecording('asr')}
-              disabled={isLoading || isVoiceLoading || isFinalizing}
-              className="rounded-lg border border-border bg-secondary px-3 py-3 text-foreground transition-colors hover:bg-secondary/80 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Start live ASR transcription"
-            >
-              {isFinalizing && recordingMode === 'asr' ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Mic size={20} />
-              )}
-            </button>
-
-            <button
-              onClick={() => void handleStartRecording('voice')}
-              disabled={isLoading || isVoiceLoading || isFinalizing}
-              className="rounded-lg border border-border bg-secondary px-3 py-3 text-foreground transition-colors hover:bg-secondary/80 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Start live voice turn"
-            >
-              {isFinalizing && recordingMode === 'voice' ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <AudioLines size={20} />
-              )}
-            </button>
-          </>
-        ) : (
+        {isMicCaptureActive ? (
           <button
             onClick={() => void handleStopRecording()}
             className="rounded-lg bg-emerald-500 px-3 py-3 text-black transition-colors hover:bg-emerald-400"
@@ -174,7 +246,37 @@ export function InputBar({
           >
             <Check size={20} />
           </button>
+        ) : (
+          <button
+            onClick={() => void handleStartRecording('asr')}
+            disabled={isLoading || isVoiceLoading || isFinalizing || isVoiceSessionActive}
+            className="rounded-lg border border-border bg-secondary px-3 py-3 text-foreground transition-colors hover:bg-secondary/80 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Start live ASR transcription"
+          >
+            {isFinalizing && recordingMode === 'asr' ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <Mic size={20} />
+            )}
+          </button>
         )}
+
+        <button
+          onClick={() => void handleToggleVoiceSession()}
+          disabled={!isVoiceSessionActive && (isLoading || isFinalizing || isMicCaptureActive)}
+          className={`rounded-lg border px-3 py-3 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            isVoiceSessionActive
+              ? 'border-emerald-500 bg-emerald-500 text-black hover:bg-emerald-400'
+              : 'border-border bg-secondary text-foreground hover:bg-secondary/80'
+          }`}
+          title={isVoiceSessionActive ? 'Stop live voice mode' : 'Start live voice mode'}
+        >
+          {isVoiceLoading && isVoiceSessionActive ? (
+            <Loader2 size={20} className="animate-spin" />
+          ) : (
+            <AudioLines size={20} />
+          )}
+        </button>
 
         <button
           onClick={handleSend}
@@ -198,26 +300,26 @@ export function InputBar({
 
       {(isBusy || partialTranscript || statusError) && (
         <div className="mt-2 space-y-2 text-xs">
-          {isRecording && recordingMode === 'voice' && (
+          {isVoiceSessionActive && (
             <span className="block text-emerald-400">
-              Listening live for a voice turn. Press ✓ when you want the final transcript sent into PolyMorph Voice Mode.
+              {isVoiceLoading
+                ? 'Voice mode is responding. It will resume listening when playback completes. Tap the voice button again to stop.'
+                : 'Voice mode is live. Speak naturally and PolyMorph will keep the conversation going until you tap the voice button again.'}
             </span>
           )}
-          {isRecording && recordingMode === 'asr' && (
+          {isMicCaptureActive && (
             <span className="block text-emerald-400">
               Listening live for transcription. Press ✓ when you want the finalized transcript inserted into the composer.
             </span>
           )}
-          {isFinalizing && (
+          {isFinalizing && recordingMode === 'asr' && (
             <span className="flex items-center gap-1 text-muted-foreground">
               <Loader2 size={12} className="animate-spin" />
-              {recordingMode === 'voice'
-                ? 'Finalizing live transcript and sending it into PolyMorph Voice Mode...'
-                : 'Finalizing live transcript...'}
+              Finalizing live transcript...
             </span>
           )}
           {partialTranscript && (
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-foreground">
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-foreground">
               {partialTranscript}
             </div>
           )}

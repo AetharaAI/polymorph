@@ -96,6 +96,7 @@ async def event_generator(
                 "max_iterations": event.get("max_iterations"),
                 "context_input_tokens": event.get("context_input_tokens"),
                 "context_window": event.get("context_window"),
+                "context_window_source": event.get("context_window_source"),
                 "provider": event.get("provider"),
                 "model": event.get("model"),
                 "tool_calls": event.get("tool_calls"),

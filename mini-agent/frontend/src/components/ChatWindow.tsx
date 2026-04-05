@@ -58,7 +58,7 @@ export function ChatWindow({ messages, toolCalls, isLoading }: ChatWindowProps) 
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto p-4"
+      className="min-h-0 flex-1 overflow-y-auto p-4"
     >
       {messages.map(message => (
         <MessageBubble

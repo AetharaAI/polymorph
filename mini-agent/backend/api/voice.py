@@ -28,10 +28,10 @@ router = APIRouter()
 VOICE_OUTPUT_ROOT = (Path(__file__).resolve().parent.parent / "uploads").resolve()
 DEFAULT_VOICE_AGENT_MODEL = "omnicoder"
 DEFAULT_VOICE_AGENT_PROVIDER = "openai_compat"
-DEFAULT_TTS_VOICE = "Emily.wav"
+DEFAULT_TTS_VOICE = "af_heart"
 DEFAULT_TTS_OUTPUT_FORMAT = "wav"
 DEFAULT_REALTIME_TTS_MODEL = "kokoro_realtime"
-DEFAULT_REALTIME_TTS_VOICE = "af_sky"
+DEFAULT_REALTIME_TTS_VOICE = "af_heart"
 DEFAULT_REALTIME_TTS_CONTEXT_MODE = "conversation"
 DEFAULT_REALTIME_TTS_SAMPLE_RATE = 24000
 DEFAULT_REALTIME_TTS_FORMAT = "wav"
@@ -97,12 +97,49 @@ def _resolve_realtime_voice_id(voice_id: str | None) -> str:
 
 
 def _sanitize_voice_reply_text(text: str) -> str:
+    """Strip non-speech artifacts so TTS only reads natural spoken text."""
     cleaned = str(text or "")
+    # Remove XML/think/tool tags
     cleaned = re.sub(r"(?is)<think>.*?</think>", "", cleaned)
     cleaned = re.sub(r"(?is)<tool_call>.*?</tool_call>", "", cleaned)
     cleaned = re.sub(r"(?is)<\|.*?\|>", "", cleaned)
-    cleaned = re.sub(r"(?m)^\s*```(?:json|tool|xml)?\s*$", "", cleaned)
-    cleaned = re.sub(r"(?m)^\s*```\s*$", "", cleaned)
+    # Remove full code blocks (fences AND content)
+    cleaned = re.sub(r"(?s)```[a-z]*\n.*?```", "", cleaned)
+    cleaned = re.sub(r"(?s)```.*?```", "", cleaned)
+    # Remove inline code spans
+    cleaned = re.sub(r"`[^`]+`", "", cleaned)
+    # Remove markdown links → keep label only
+    cleaned = re.sub(r"\[([^\]]*)\]\([^)]+\)", r"\1", cleaned)
+    # Remove raw URLs
+    cleaned = re.sub(r"https?://\S+", "", cleaned)
+    # Remove markdown headings markers
+    cleaned = re.sub(r"(?m)^#{1,6}\s+", "", cleaned)
+    # Remove bold/italic markers
+    cleaned = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", cleaned)
+    cleaned = re.sub(r"_{1,3}([^_]+)_{1,3}", r"\1", cleaned)
+    # Remove bullet markers (-, *, numbered lists)
+    cleaned = re.sub(r"(?m)^[\s]*[-*•]\s+", "", cleaned)
+    cleaned = re.sub(r"(?m)^\s*\d+\.\s+", "", cleaned)
+    # Remove emoji (common Unicode blocks)
+    cleaned = re.sub(
+        r"[\U0001F300-\U0001F9FF\U00002702-\U000027B0\U0000FE00-\U0000FE0F"
+        r"\U0000200D\U00002600-\U000026FF\U00002B50\U0000231A-\U0000231B"
+        r"\U00002934-\U00002935\U000025AA-\U000025FE\U00002B05-\U00002B07"
+        r"\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF]+",
+        "",
+        cleaned,
+    )
+    # Remove stray special chars that sound bad in TTS
+    cleaned = re.sub(r"[{}\[\]<>|\\~^]", "", cleaned)
+    # Remove harness verification notes / scaffolding lines
+    cleaned = re.sub(r"(?im)^verification note:.*$", "", cleaned)
+    cleaned = re.sub(r"(?im)^note:.*source links.*$", "", cleaned)
+    # Collapse whitespace
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    # Clean up orphaned punctuation / artifacts
+    cleaned = re.sub(r"(?m)^\s*[,:;]\s*$", "", cleaned)
+    cleaned = re.sub(r"\(\s*\)", "", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
@@ -110,6 +147,37 @@ def _sanitize_voice_reply_text(text: str) -> str:
 def _log_voice_event(event: str, payload: dict[str, object]) -> None:
     record = {"event": event, **payload}
     print(f"[VoiceTurn] {json.dumps(record, ensure_ascii=True, default=str)}", flush=True)
+
+
+def _tts_auth_header_candidates(api_key: str) -> list[dict[str, str]]:
+    token = _norm(api_key)
+    if not token:
+        return [{}]
+
+    candidates: list[dict[str, str]] = []
+    configured = build_service_auth_headers(token, service_id="tts")
+    if configured:
+        candidates.append(configured)
+
+        configured_name, configured_value = next(iter(configured.items()))
+        if configured_name.strip().lower() == "authorization":
+            raw_value = token
+            if configured_value != raw_value:
+                candidates.append({"Authorization": raw_value})
+
+    candidates.append({"Authorization": token})
+    candidates.append({"X-API-Key": token})
+    candidates.append({})
+
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    for candidate in candidates:
+        key = tuple(sorted(candidate.items()))
+        if key in seen:
+            continue
+        deduped.append(candidate)
+        seen.add(key)
+    return deduped
 
 
 def _upsert_tool_event(tool_events: list[dict[str, object]], event: dict[str, object]) -> None:
@@ -224,11 +292,18 @@ def _voice_agent_system_prompt() -> str:
     if configured:
         return configured
     return (
-        "You are PolyMorph Voice Mode, a fast spoken conversation assistant. "
-        "Brand pronunciation guide: Aether and AetherPro are pronounced AY-ther, preferring the unvoiced TH. "
-        "Keep replies concise, natural, and easy to listen to. "
-        "When a tool is needed, use the harness tools directly instead of narrating the plan. "
-        "Do not emit markdown, raw XML tool markup, or fake JSON tool payloads."
+        "You are PolyMorph Voice Mode, a spoken conversation assistant. "
+        "Your text output will be read aloud by a TTS engine, so write ONLY natural spoken language.\n\n"
+        "CRITICAL RULES FOR VOICE OUTPUT:\n"
+        "- Write as if speaking out loud. No markdown, no bullet points, no numbered lists, no headings.\n"
+        "- NEVER include URLs, links, file paths, or code in your spoken response.\n"
+        "- NEVER narrate tool calls, tool results, JSON, or technical scaffolding.\n"
+        "- When you use tools, just use them silently. Only speak your final answer or summary.\n"
+        "- After tool results come back, summarize the findings conversationally. "
+        "Do not read out source labels, quality scores, or raw snippets.\n"
+        "- Keep replies concise and conversational. Two to four sentences is ideal.\n"
+        "- Brand pronunciation: Aether and AetherPro are pronounced AY-ther.\n"
+        "- Do not use emoji, special characters, or any formatting that is not plain spoken English."
     )
 
 
@@ -446,15 +521,26 @@ async def _start_realtime_tts_stream(
             },
         },
     }
-    headers = {"Content-Type": "application/json", **build_service_auth_headers(api_key, service_id="tts")}
     endpoint = _build_gateway_endpoint(base_url, "/api/v1/tts/stream/start")
+    last_error = "Realtime TTS bootstrap failed."
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
-        resp = await client.post(endpoint, headers=headers, json=payload)
-        if not resp.is_success:
+        resp = None
+        data = None
+        for auth_headers in _tts_auth_header_candidates(api_key):
+            headers = {"Content-Type": "application/json", **auth_headers}
+            resp = await client.post(endpoint, headers=headers, json=payload)
+            if resp.is_success:
+                data = resp.json()
+                break
             detail = resp.text[:300]
-            raise HTTPException(status_code=502, detail=f"Realtime TTS bootstrap failed: {resp.status_code} {detail}")
-        data = resp.json()
+            last_error = f"Realtime TTS bootstrap failed: {resp.status_code} {detail}"
+            if resp.status_code == 401:
+                continue
+            break
+
+    if data is None:
+        raise HTTPException(status_code=502, detail=last_error)
 
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail="Realtime TTS bootstrap returned an invalid payload.")
@@ -483,7 +569,7 @@ async def _synthesize_voice_audio(text: str, voice_id: str | None) -> tuple[byte
 
     tts_api_key = _norm(resolve_env("TTS_API_KEY", service_id="tts", default=""))
     timeout_seconds = float(resolve_env("TTS_TIMEOUT_SECONDS", service_id="tts", default="45") or "45")
-    tts_model = _norm(resolve_env("TTS_MODEL", service_id="tts", default="chatterbox")) or "chatterbox"
+    tts_model = _norm(resolve_env("TTS_MODEL", service_id="tts", default=DEFAULT_REALTIME_TTS_MODEL)) or DEFAULT_REALTIME_TTS_MODEL
     output_format = _norm(resolve_env("VOICE_TTS_OUTPUT_FORMAT", default=DEFAULT_TTS_OUTPUT_FORMAT)) or DEFAULT_TTS_OUTPUT_FORMAT
     requested_voice = _norm(voice_id)
     if requested_voice in {item["id"] for item in REALTIME_VOICE_PRESETS} and "." not in requested_voice:
@@ -493,6 +579,7 @@ async def _synthesize_voice_audio(text: str, voice_id: str | None) -> tuple[byte
     headers = {"Content-Type": "application/json", **build_service_auth_headers(tts_api_key, service_id="tts")}
 
     payload = {
+        "model": tts_model,
         "text": text,
         "voice_mode": "predefined",
         "predefined_voice_id": resolved_voice,
@@ -696,6 +783,7 @@ async def voice_turn(request: VoiceTurnRequest):
         collect_voice_event,
         reasoning_mode=request.reasoning_mode,
         provider_override=provider,
+        system_prompt_override=_voice_agent_system_prompt(),
     )
 
     if terminal_error:
@@ -772,6 +860,14 @@ async def voice_turn(request: VoiceTurnRequest):
                 "detail": str(exc.detail),
             },
         )
+        allow_legacy_fallback = _norm(resolve_env("VOICE_ALLOW_LEGACY_TTS_FALLBACK", default="false")).lower() in {"1", "true", "yes", "on"}
+        if not allow_legacy_fallback:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Realtime voice synthesis failed and legacy HTTP fallback is disabled: {exc.detail}"
+                ),
+            ) from exc
         audio_bytes, mime_type, extension, resolved_voice, tts_model, tts_base_url = await _synthesize_voice_audio(
             assistant_text,
             request.voice_id,
@@ -826,3 +922,60 @@ async def get_voice_audio(session_id: str, filename: str):
     elif target.suffix.lower() == ".opus":
         media_type = "audio/opus"
     return FileResponse(path=target, media_type=media_type, filename=target.name)
+
+
+class VoiceStreamStopRequest(BaseModel):
+    session_id: str
+
+
+class VoiceStreamStopResponse(BaseModel):
+    session_id: str
+    status: str
+    gateway_status: str | None = None
+
+
+@router.post("/voice/stream/stop", response_model=VoiceStreamStopResponse)
+async def stop_voice_stream(request: VoiceStreamStopRequest):
+    stream_session_id = request.session_id.strip()
+    if not stream_session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id.")
+
+    base_url, api_key, _ = _realtime_tts_config()
+    if not base_url:
+        return VoiceStreamStopResponse(
+            session_id=stream_session_id,
+            status="skipped",
+            gateway_status="No TTS gateway configured.",
+        )
+
+    endpoint = _build_gateway_endpoint(base_url, f"/v1/sessions/{stream_session_id}/end")
+    timeout_seconds = float(resolve_env("VOICE_REALTIME_TTS_TIMEOUT_SECONDS", default="10") or "10")
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
+        for auth_headers in _tts_auth_header_candidates(api_key):
+            headers = {"Content-Type": "application/json", **auth_headers}
+            try:
+                resp = await client.post(endpoint, headers=headers)
+                if resp.is_success:
+                    data = resp.json()
+                    _log_voice_event("tts_stream_stopped", {
+                        "session_id": stream_session_id,
+                        "gateway_status": str(data.get("status", "")),
+                    })
+                    return VoiceStreamStopResponse(
+                        session_id=stream_session_id,
+                        status="stopped",
+                        gateway_status=str(data.get("status", "")),
+                    )
+                if resp.status_code == 401:
+                    continue
+                break
+            except Exception:  # noqa: BLE001
+                continue
+
+    _log_voice_event("tts_stream_stop_failed", {"session_id": stream_session_id})
+    return VoiceStreamStopResponse(
+        session_id=stream_session_id,
+        status="failed",
+        gateway_status=None,
+    )

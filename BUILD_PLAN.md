@@ -1,50 +1,62 @@
 # BUILD_PLAN
 
 ## Goal
-Refactor PolyMorph and related routing/config assumptions to use one canonical client-facing gateway:
+Turn the current PolyMorph repo state into an explicit operational-autonomy roadmap centered on real company utility:
 
-`https://api.aetherpro.tech/v1`
+- stabilize the message adapter layer as the first production ingress path
+- define the next integration order around Syndicate, approvals, and outbound action execution
+- update repo instructions/state docs so future agent runs optimize for operational value instead of generic benchmark/demo behavior
 
-This is a control-plane simplification pass. Remote model nodes remain worker backends behind the unified gateway. Client code should keep choosing model names while the gateway handles backend routing.
-
-## Phases
-1. Audit gateway assumptions
-   - locate hardcoded or split LiteLLM base URLs
-   - identify any gateway-1/gateway-2 or per-node client-facing assumptions
-   - read the unified gateway runbook and align current project-state/docs
-2. Refactor canonical routing
-   - replace split client-facing gateway bases with the unified gateway base
-   - preserve model-name-based routing semantics
-   - keep direct OpenAI handling separate where it is intentionally direct vendor traffic
-3. Add Qwen reasoning-mode control
-   - make Qwen3/Qwen3.5 `enable_thinking` controllable in request-building
-   - default production/direct-answer flows to `enable_thinking=false`
-   - allow explicit reasoning-mode opt-in per request/route for models like `qwen3.5-122`
-4. Verification and state updates
-   - run targeted compile/smoke checks
-   - update project-state/runtime docs to reflect the unified gateway architecture
-   - produce a concise implementation summary
+## Milestones
+1. Audit current operational autonomy substrate
+   - inspect active channel-control-plane code in `mini-agent/backend/channels/`
+   - inspect current Telegram bridge/runtime config surfaces
+   - inspect donor `mcas/` materials only as reference, not as active runtime
+   - inspect current project-state and roadmap docs for stale priority order
+2. Publish the ordered operational roadmap
+   - write an explicit top-down priority list beginning with the message adapter layer
+   - capture current status, immediate gaps, and next build steps for each integration
+   - make Syndicate the first platform-specific autonomy target after the adapter layer
+3. Update agent-facing instructions and canonical state
+   - update repo-level `AGENTS.md`
+   - update backend runtime guidance in `mini-agent/backend/AGENTS.md`
+   - update `PROJECT_STATE.md` and `project-state/ai/current-state.yaml`
+   - update human/docs references so the new roadmap is discoverable first
+4. Verify and summarize
+   - verify edited docs/paths are coherent
+   - summarize what is live now, what is next, and which integration should be built first
 
 ## Dependencies And Assumptions
-- The unified gateway runbook in `runbooks/UNIFIED_GATEWAY_RUNBOOK.md` is the routing truth for this change.
-- `https://api.aetherpro.tech/v1` is now the canonical OpenAI-compatible base for internal harness traffic.
-- Remote model workers should not be treated as separate client-facing API bases unless a path is explicitly marked as internal diagnostics.
-- Direct OpenAI vendor traffic remains a separate adapter path and should not be collapsed into the unified internal gateway.
+- The active runtime remains `mini-agent/`; `mcas/` stays donor/reference only.
+- Telegram is the only live channel slice in this repo today.
+- Syndicate implementation work itself lives in a separate repo/VM, so this repo should describe and prioritize the adapter contract rather than pretend the adapter already exists here.
+- The current runtime env uses:
+  - `AGENT_REQUIRE_PLAN_FOR_PROJECTS=false`
+  - `AGENT_PLAN_APPROVAL_MODE=auto`
+  so this plan can be written and execution can continue without a manual approval stop.
 
 ## Test Strategy And Acceptance Checks
-- Search results show no remaining client-facing “gateway 1 / gateway 2” assumptions in active harness code/config.
-- Unified gateway base is used consistently for OpenAI-compatible internal routing defaults.
-- Qwen3/Qwen3.5 production chat requests send `extra_body.chat_template_kwargs.enable_thinking=false` by default.
-- At least one code path supports explicit reasoning-mode opt-in without changing model-selection semantics.
-- Edited Python/TS files pass syntax/build-adjacent checks that are practical in-repo.
-- Project-state docs reflect the new one-gateway-many-workers model.
+- `BUILD_PLAN.md` exists and reflects the new operational-autonomy goal.
+- The roadmap doc starts with the message adapter layer and gives:
+  - current status
+  - direct operational value
+  - what is next
+  - where to start first
+- `AGENTS.md` and backend runtime instructions point future runs toward operational-value work rather than generic feature drift.
+- `PROJECT_STATE.md` and `project-state/ai/current-state.yaml` expose the new priority order and active roadmap document.
+- Updated docs reference only real repo state:
+  - Telegram webhook bridge exists
+  - WhatsApp does not yet exist in the active runtime
+  - Syndicate adapter is a next integration, not a finished feature
+- Key doc paths referenced in state/docs exist after the edits.
 
 ## Risks
-- Some files may intentionally reference per-node URLs for diagnostics or infrastructure docs; those should not be blindly flattened.
-- Existing runtime overrides in saved config may still point to old bases even after code defaults are fixed.
-- Reasoning-mode defaults can change output behavior for Qwen-family models, so the production-vs-reasoning distinction must stay explicit.
+- Overwriting older roadmap language could hide useful historical context if not replaced cleanly.
+- It is easy to overstate channel readiness; the current Telegram slice is real but still thin.
+- Because Syndicate code lives elsewhere, the roadmap must stay honest about what is planned here versus already implemented here.
+- Future agents may still drift into generic build mode unless both root and backend instructions are updated coherently.
 
 ## Rollback
-- Keep model-name routing unchanged so reverting the base-url simplification is isolated to config/request-building layers.
-- Limit code changes to routing/config/request construction rather than tool semantics.
-- If Qwen reasoning defaults cause regressions, revert the default toggle while preserving the new per-request control hooks.
+- Keep changes documentation-focused and state-focused only.
+- Do not mutate active runtime/provider/channel code in this pass.
+- If any wording is too aggressive or inaccurate, rollback is a simple doc revert without operational impact.

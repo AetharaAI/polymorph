@@ -14,7 +14,7 @@ import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { useFiles } from '@/hooks/useFiles';
 import { VoicePanel } from '@/components/VoicePanel';
 import { Session, ToolHealthSummary, ProviderHealth, DiagnosticsResponse } from '@/lib/types';
-import { getDiagnostics, getHealth, listSessions } from '@/lib/api';
+import { getDiagnostics, getHealth, listSessions, stopVoiceStreamBeacon } from '@/lib/api';
 
 const STORAGE_KEY = 'aetherops_sessions_v1';
 const CURRENT_SESSION_KEY = 'aetherops_current_session_v1';
@@ -39,6 +39,7 @@ export default function Home() {
     selectedVoiceId,
     setSelectedVoiceId,
     sendTurn: sendVoiceTurn,
+    getActiveTtsSessionId,
   } = useVoiceChat(sessionId);
   const { files, upload, remove: removeFile, loadFiles } = useFiles(sessionId);
 
@@ -139,6 +140,19 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const activeTtsSessionId = getActiveTtsSessionId();
+      if (activeTtsSessionId) {
+        stopVoiceStreamBeacon(activeTtsSessionId);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [getActiveTtsSessionId]);
+
   const createNewSession = () => {
     const newId = uuidv4();
     setSessionId(newId);
@@ -229,7 +243,7 @@ export default function Home() {
         )}
 
         {/* Chat area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           {/* Top toolbar with sidebar toggles */}
           <div className="h-10 border-b border-border flex items-center px-2 gap-2">
             <button

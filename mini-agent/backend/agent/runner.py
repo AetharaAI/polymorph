@@ -8,6 +8,7 @@ import ast
 import time
 import sys
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 from datetime import datetime, timezone
@@ -33,14 +34,6 @@ DEFAULT_SYSTEM_PROMPT = """You are Agent-Max, an autonomous AI agent running ins
 You must not fabricate facts. If uncertain, say so clearly and verify before concluding.
 Prefer primary sources, cite provenance, and state confidence when evidence is weak.
 Do not guess the current date or time from model memory. Use the explicit temporal context provided by the harness."""
-
-DEFAULT_EVAL_PROMPT = """## Tool Execution Complete
-
-Evaluate the tool results:
-1. Did this materially advance the user's objective?
-2. If uncertain, what verification step is required next?
-3. Decide next action: continue_same_strategy, revise_query_or_parameters, switch_tools, or conclude_task.
-4. Never invent facts. If evidence is insufficient, explicitly say so and verify."""
 
 MODEL_CONTEXT_WINDOW = int(os.getenv("MODEL_CONTEXT_WINDOW", "0") or "0")
 MAX_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "60"))
@@ -262,6 +255,23 @@ def _resolve_effective_context_window(provider: Any, requested_max_tokens: int) 
     return fallback_window
 
 
+def _resolve_context_window_source(provider: Any) -> str:
+    compat_override = resolve_env("OPENAI_COMPAT_CONTEXT_WINDOW", default="").strip()
+    for raw in (compat_override, str(MODEL_CONTEXT_WINDOW or "")):
+        try:
+            value = int(raw)
+        except Exception:
+            value = 0
+        if value > 0:
+            return "configured"
+
+    learned = getattr(provider, "_learned_context_window", None)
+    if isinstance(learned, int) and learned > 0:
+        return "learned"
+
+    return "estimate"
+
+
 def _history_char_budget_for_iteration(
     *,
     provider: Any,
@@ -296,6 +306,11 @@ def _extract_write_filename(tool_input: dict[str, Any]) -> str:
     if isinstance(path_like, str) and path_like.strip():
         return Path(path_like.replace("file://", "").strip()).name
     return ""
+
+
+def _fallback_tool_call_id() -> str:
+    # Mistral tool validators require short alphanumeric ids.
+    return uuid.uuid4().hex[-9:]
 
 
 def _build_project_governance_block(
@@ -743,10 +758,33 @@ async def run_agent(
     audio_input: dict[str, Any] | None = None,
     audio_url: dict[str, Any] | None = None,
     provider_override: BaseLLMProvider | None = None,
+    system_prompt_override: str | None = None,
 ) -> None:
     """Run the autonomous tool loop for a session."""
 
     memory = await get_memory_service()
+
+    # Stream integration (non-blocking, best-effort)
+    _stream_client = None
+    _stream_model_id = ""
+    if not getattr(memory, "degraded_mode", False):
+        try:
+            from backend.streams.client import StreamClient as _SC
+            from backend.streams.protocol import MessageType as _MT
+            from backend.streams.protocol import StreamMessage as _SM
+
+            _redis_client = memory.get_redis_client()
+            _stream_model_id = (
+                (provider_override.model_name if provider_override else None)
+                or os.getenv("AGENT_MODEL", "")
+                or "unknown"
+            )
+            _stream_client = _SC(redis=_redis_client, model_id=_stream_model_id)
+            await _stream_client.ensure_consumer_groups()
+        except Exception as _stream_exc:  # noqa: BLE001
+            print(f"[Agent] Stream client init skipped: {_stream_exc}", flush=True)
+            _stream_client = None
+
     multimodal_provider = get_multimodal_audio_provider() if (audio_input or audio_url) else None
     if (audio_input or audio_url) and multimodal_provider is None:
         await stream_callback(
@@ -840,8 +878,7 @@ async def run_agent(
         plan_status=plan_status,
     )
 
-    system_prompt = _load_prompt("SYSTEM_PROMPT_PATH", "system_prompt.md", DEFAULT_SYSTEM_PROMPT)
-    eval_prompt_text = _load_prompt("TOOL_EVALUATION_PROMPT_PATH", "tool_evaluation_prompt.md", DEFAULT_EVAL_PROMPT)
+    system_prompt = system_prompt_override or _load_prompt("SYSTEM_PROMPT_PATH", "system_prompt.md", DEFAULT_SYSTEM_PROMPT)
     base_system_prompt = temporal_context + "\n\n" + system_prompt
     if agent_rules:
         base_system_prompt += "\n\n" + agent_rules
@@ -934,6 +971,19 @@ async def run_agent(
 
     while iteration < MAX_ITERATIONS:
         iteration += 1
+
+        if _stream_client:
+            try:
+                _incoming = await _stream_client.read_commands(count=3)
+                for _entry_id, _cmd_msg in _incoming:
+                    print(
+                        f"[Agent] Stream command: from={_cmd_msg.source_model} "
+                        f"trace={_cmd_msg.trace_id[:8]} payload={_cmd_msg.payload}",
+                        flush=True,
+                    )
+                    await _stream_client.ack_command(_entry_id)
+            except Exception:  # noqa: BLE001
+                pass
 
         iteration_state = await memory.get_session_state(session_id)
         loaded_tool_names = list(iteration_state.get("loaded_tool_schemas", []))
@@ -1103,6 +1153,7 @@ async def run_agent(
                         "max_iterations": MAX_ITERATIONS,
                         "context_input_tokens": peak_input_tokens,
                         "context_window": reported_context_window,
+                        "context_window_source": _resolve_context_window_source(provider),
                         "provider": response_provider,
                         "model": response_model,
                         "fallback_used": response.fallback_used,
@@ -1121,6 +1172,21 @@ async def run_agent(
                         "total_tool_calls": total_tool_calls,
                     },
                 )
+
+                if _stream_client:
+                    try:
+                        await _stream_client.publish_event(_SM(
+                            source_model=_stream_model_id,
+                            msg_type=_MT.EVENT,
+                            payload={
+                                "event": "agent_run_completed",
+                                "session_id": session_id,
+                                "iterations": iteration,
+                                "total_tool_calls": total_tool_calls,
+                            },
+                        ))
+                    except Exception:  # noqa: BLE001
+                        pass
 
                 await memory.end_session()
                 return
@@ -1152,7 +1218,7 @@ async def run_agent(
                 plan_artifact_written = False
 
                 for idx, block in enumerate(tool_blocks):
-                    tool_id = block.id or f"tool_{iteration}_{idx}"
+                    tool_id = block.id or _fallback_tool_call_id()
                     tool_name = block.name or ""
                     tool_input = block.input or {}
 
@@ -1249,6 +1315,23 @@ async def run_agent(
 
                     await stream_callback({"type": "tool_result", "tool_id": tool_id, "result": result})
 
+                    if _stream_client:
+                        try:
+                            await _stream_client.publish_event(_SM(
+                                source_model=_stream_model_id,
+                                msg_type=_MT.EVENT,
+                                payload={
+                                    "event": "tool_result",
+                                    "tool_name": tool_name,
+                                    "tool_id": tool_id,
+                                    "result_preview": str(result)[:500],
+                                    "session_id": session_id,
+                                    "iteration": iteration,
+                                },
+                            ))
+                        except Exception:  # noqa: BLE001
+                            pass
+
                     file_info = await _extract_artifact_info(
                         tool_name=tool_name,
                         tool_input=tool_input,
@@ -1275,8 +1358,11 @@ async def run_agent(
                     tool_results.append({"type": "tool_result", "tool_use_id": tool_id, "content": result})
 
                 messages.append({"role": "assistant", "content": content_dicts})
+                # Preserve tool results for the next iteration, but do not
+                # inject a synthetic follow-up `user` turn after tool messages.
+                # Mistral rejects that sequence, and the internal evaluation
+                # prompt was leaking visible scaffolding into final answers.
                 messages.append({"role": "user", "content": tool_results})
-                messages.append({"role": "user", "content": eval_prompt_text})
                 await memory.save_messages(session_id, _sanitize_messages_for_persistence(messages))
                 await memory.register_tools_for_session(session_id, iteration_tools)
                 await memory.update_session_state(
@@ -1317,6 +1403,7 @@ async def run_agent(
                     "max_iterations": MAX_ITERATIONS,
                     "context_input_tokens": peak_input_tokens,
                     "context_window": reported_context_window,
+                    "context_window_source": _resolve_context_window_source(provider),
                     "provider": provider.provider_name,
                     "model": provider.model_name,
                     "tool_calls": total_tool_calls,

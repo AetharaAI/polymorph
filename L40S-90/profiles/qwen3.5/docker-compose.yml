@@ -1,0 +1,95 @@
+networks:
+  aether-ops:
+    external: true
+
+services:
+  qwen3.5-35b:
+    image: vllm/vllm-openai:nightly
+    container_name: qwen3.5-35b
+    runtime: nvidia
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/qwen3.5-35b:/logs
+    ports:
+      - "8101:8000"
+    command: >
+      /models/cyankiwi/Qwen3.5-35B-A3B-AWQ-4bit
+      --trust-remote-code
+      --served-model-name qwen3.5-35b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --kv-cache-dtype fp8
+      --gpu-memory-utilization 0.40
+      --max-model-len 16384
+      --max-num-seqs 3
+      --max-num-batched-tokens 8192
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --enforce-eager
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --generation-config vllm
+      --api-key EMPTY
+    restart: unless-stopped
+
+  qwen3.5-9b:
+    depends_on:
+      qwen3.5-35b:
+        condition: service_started
+    image: vllm/vllm-openai:nightly
+    container_name: qwen3.5-9b
+    runtime: nvidia
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/qwen3.5-9b:/logs
+    ports:
+      - "8102:8000"
+    command: >
+      /models/cyankiwi/Qwen3.5-9B-AWQ-BF16-INT8
+      --served-model-name qwen3.5-9b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --gpu-memory-utilization 0.33
+      --max-model-len 16384
+      --max-num-seqs 3
+      --max-num-batched-tokens 4096
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --enforce-eager
+      --tool-call-parser qwen3_coder
+      --enable-prefix-caching
+      --kv-cache-dtype fp8
+      --enable-chunked-prefill
+      --generation-config vllm
+      --trust-remote-code
+      --api-key EMPTY
+    restart: unless-stopped

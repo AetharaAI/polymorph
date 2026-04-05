@@ -45,6 +45,14 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
     ? Math.min(1, usage.context_input_tokens / Math.max(usage.context_window, 1))
     : 0;
   const contextPercent = Math.round(contextRatio * 100);
+  const contextSourceLabel =
+    usage?.context_window_source === 'configured'
+      ? ''
+      : usage?.context_window_source === 'learned'
+        ? ' learned'
+        : usage?.context_window_source
+          ? ' est'
+          : '';
   const memoryPercent = diagnostics?.system.memory_percent ?? 0;
   const asrStatus = diagnostics?.services?.asr?.status || 'unknown';
   const asrClass = asrStatus === 'healthy'
@@ -143,7 +151,7 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
             </span>
             <div className="flex items-center gap-2 min-w-[220px]">
               <span className="text-muted-foreground whitespace-nowrap">
-                Ctx {usage.context_input_tokens}/{usage.context_window} ({contextPercent}%)
+                Ctx {usage.context_input_tokens}/{usage.context_window}{contextSourceLabel} ({contextPercent}%)
               </span>
               <div className="h-2 flex-1 bg-background/60 rounded overflow-hidden">
                 <div

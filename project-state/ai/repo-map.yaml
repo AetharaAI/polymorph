@@ -31,6 +31,9 @@ important_paths:
   harness_docs:
     path: mini-agent/docs
     purpose: implementation_and_reference_docs
+  harness_operational_roadmap:
+    path: mini-agent/docs/Autonomous-Control-Plane-Roadmap.md
+    purpose: ordered_operational_autonomy_priority_list
   project_state:
     path: project-state
     purpose: machine_and_human_readable_state_package

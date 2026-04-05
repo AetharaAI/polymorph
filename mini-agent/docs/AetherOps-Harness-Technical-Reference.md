@@ -45,6 +45,10 @@ API surface:
 - `GET /api/health`
 - `GET /api/health/diagnostics`
 - `POST /api/health/tools/refresh`
+- `GET /api/channels`
+- `GET /api/channels/{channel_id}`
+- `POST /api/channels/telegram/sync-webhook`
+- `POST /api/channels/telegram/webhook`
 - `POST /api/files/upload`
 - `GET /api/files/{session_id}`
 - `GET /api/files/view/{file_id}`
@@ -79,6 +83,16 @@ Provider abstraction:
   - `openai_provider.py`
   - `openai_compat_provider.py`
   - `failover_provider.py`
+
+Channel control plane:
+- `backend/channels/base.py`
+- `backend/channels/manager.py`
+- `backend/channels/dispatcher.py`
+- `backend/channels/telegram.py`
+- current active adapter slice is Telegram webhook ingress/egress
+- `mcas/` remains donor/reference material only; it is not the active runtime
+- current ordered autonomy roadmap lives in:
+  - `mini-agent/docs/Autonomous-Control-Plane-Roadmap.md`
 
 ## 4. Tooling Layer
 

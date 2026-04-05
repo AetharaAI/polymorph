@@ -1,0 +1,231 @@
+# profiles/index.yaml
+#
+# Rules:
+# - first model listed is the primary / anchor model
+# - primary model gets the larger GPU share in dual-model profiles
+# - secondary model is the companion model
+# - "mini-*" means MiniCPM-V 4.5 is the anchor, not a small model
+# - "qwen3.5" on this box means Qwen 3.5 35B single anchor
+#
+# status:
+#   known_good | experimental | broken | unknown
+#
+# fits_box:
+#   whether this profile is known to fit and run on this L40S-90 48GB box
+#
+# gateway_model_id:
+#   the exact LiteLLM model id exposed at /v1/models and used for real routing.
+#   if this does not match the live LiteLLM config, the model is not callable in practice.
+# gpu_split_hint:
+#   operational hint only; not an enforced scheduler value
+profiles:
+
+  - name: qwen3.5
+    path: ./qwen3.5
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: general_agentic_anchor
+    primary_model: qwen-3.5-35b
+    secondary_model: null
+    anchor_model: qwen-3.5-35b
+    gpu_split_hint: "single-model anchor"
+    notes: "Single anchor model for general agentic tasks."
+
+  - name: minicpm-v
+    path: ./minicpm-v
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: general_vision_anchor
+    primary_model: minicpm-v-4.5b
+    secondary_model: null
+    anchor_model: minicpm-v-4.5b
+    gpu_split_hint: single-model
+    notes: "Single anchor model for general vision tasks."
+
+  - name: devstral-123b
+    path: ./devstral-123b
+    status: experimental
+    known_good: false
+    fits_box: false
+    purpose: agentic_swe
+    primary_model: devstral-2-123b-instruct
+    secondary_model: null
+    anchor_model: devstral-2-123b-instruct
+    gpu_split_hint: "single-model attempt"
+    notes: "Experimental. Not currently a known-good fit for this 48GB box."
+
+  - name: heretic-9b
+    path: ./heretic-9b
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: general
+    primary_model: qwen3.5-heretic-9b
+    secondary_model: null
+    anchor_model: qwen3.5-heretic-9b
+    gateway_model_id: qwen3.5-9b-h
+    gpu_split_hint: "single-model"
+    notes: "Heretic fine tuned model for Redwatch Red teaming."
+
+  - name: omnicoder
+    path: ./omnicoder
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: coding_specialist
+    primary_model: omnicoder-9b
+    secondary_model: null
+    anchor_model: omnicoder-9b
+    gpu_split_hint: "single-model"
+    notes: "Needs thinking tags & internal reasoning stripped from response. Strong coding specialist."
+
+  - name: phi4
+    path: ./phi4
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: multimodal
+    primary_model: phi-4-multimodal-instruct
+    secondary_model: null
+    anchor_model: phi-4-multimodal-instruct
+    gpu_split_hint: "single-model"
+    notes: "Small general purpose fully omni multimodal model, text only until audio/vision chat template fully functional."
+
+  - name: redqwen
+    path: ./redqwen
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: redwatch_specialist
+    primary_model: redqwen
+    secondary_model: null
+    anchor_model: Qwen3-VL-8B-Instruct-Unredacted-MAX
+    gateway_model_id: redqwen-vl
+    gpu_split_hint: "single model"
+    notes: "Confirm exact route/config."
+
+  - name: vuln
+    path: ./vuln
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: redwatch_security
+    primary_model: VulnLLM-R-7B-AWQ-8bit
+    secondary_model: null
+    anchor_model: VulnLLM-R-7B-AWQ-8bit
+    gateway_model_id: vulnllm-r-7b
+    gpu_split_hint: "single-model"
+    notes: "Redwatch security specialist."
+
+dual_specialists:
+
+  - name: dual-qwen
+    path: ./dual-qwen
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: dual_model
+    primary_model: qwen3.5-9b
+    secondary_model: qwen3.5-4b
+    anchor_model: qwen3.5-9b
+    gpu_split_hint: "primary-heavy"
+    notes: "Dual model pair for general tasks with primary-heavy GPU split."
+
+  - name: jan-qwen
+    path: ./jan-qwen
+    status: unknown
+    known_good: false
+    fits_box: true
+    purpose: coding
+    primary_model: jan-code-4b
+    secondary_model: qwen3.5-4b
+    anchor_model: jan-code-4b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Dual model pair for coding tasks with primary-heavy GPU split."
+
+  - name: mini-nan
+    path: ./mini-nan
+    status: known_good  
+    known_good: true
+    fits_box: true
+    purpose: vision_plus_reasoning
+    primary_model: minicpm-v-4.5b
+    secondary_model: nanbeige4-3b-thinking
+    anchor_model: minicpm-v-4.5b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "MiniCPM-V & Nanbeige vision & long horizon agentic tasks."
+
+  - name: mini-qwen2
+    path: ./mini-qwen2
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: vision_plus_lightweight
+    primary_model: minicpm-v-4.5b
+    secondary_model: qwen3.5-2b
+    anchor_model: minicpm-v-4.5b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Possible telephony voice agent pairing."
+
+  - name: mini-qwen9
+    path: ./mini-qwen9
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: vision_plus_reasoning
+    primary_model: minicpm-v-4.5b
+    secondary_model: qwen3.5-9b
+    anchor_model: minicpm-v-4.5b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Telephony primary voice agent pairing."
+
+  - name: mini-vuln
+    path: ./mini-vuln
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: vision_plus_security
+    primary_model: minicpm-v-4.5b
+    secondary_model: vulnllm-r-7b
+    anchor_model: minicpm-v-4.5b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "MiniCPM-V & VulnLLM-R vision & security agentic tasks."
+
+  - name: omnicoder-mini
+    path: ./omnicoder-mini
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: coding_vision_specialist
+    primary_model: omnicoder-9b
+    secondary_model: minicpm-v-4.5b
+    anchor_model: omnicoder-9b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Needs thinking tags & internal reasoning stripped from response. Strong coding specialist."
+
+  - name: qwen9-jan
+    path: ./qwen9-jan
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: coding
+    primary_model: qwen3.5-9b
+    secondary_model: jan-code-4b
+    anchor_model: qwen3.5-9b
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Qwen-9B & Jan-Code-4B vision & coding agentic tasks."
+
+  - name: red-qwen2
+    path: ./red-qwen2
+    status: known_good
+    known_good: true
+    fits_box: true
+    purpose: redwatch_specialized
+    primary_model: Qwen3-VL-8B-Instruct-Unredacted-MAX
+    secondary_model: qwen3.5-2b
+    anchor_model: Qwen3-VL-8B-Instruct-Unredacted-MAX
+    gpu_split_hint: "primary ~2/3, secondary ~1/3"
+    notes: "Redwatch security vision specialist pairing."
+

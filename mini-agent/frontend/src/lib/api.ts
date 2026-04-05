@@ -514,6 +514,27 @@ export async function sendVoiceTurn(
   };
 }
 
+export async function stopVoiceStream(streamSessionId: string): Promise<void> {
+  try {
+    await fetch(`${BACKEND_URL}/api/voice/stream/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: streamSessionId }),
+    });
+  } catch {
+    // Fire-and-forget: swallow errors during cleanup.
+  }
+}
+
+export function stopVoiceStreamBeacon(streamSessionId: string): void {
+  if (!streamSessionId || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
+  const blob = new Blob(
+    [JSON.stringify({ session_id: streamSessionId })],
+    { type: 'application/json' },
+  );
+  navigator.sendBeacon(`${BACKEND_URL}/api/voice/stream/stop`, blob);
+}
+
 export interface ReplayRun {
   filename: string;
   path: string;

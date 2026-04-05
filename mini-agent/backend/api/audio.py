@@ -15,6 +15,10 @@ DEFAULT_ASR_TIMEOUT_SECONDS = float(os.getenv("ASR_TIMEOUT_SECONDS", "60"))
 EMPTY_AUTH_SENTINELS = {"", "empty", "none", "null", "optional"}
 
 
+def _log_asr_event(event: str, payload: dict[str, object]) -> None:
+    print(f"[AudioStream] {event} {payload}", flush=True)
+
+
 def _resolve_asr_config() -> tuple[str, str, str, float]:
     base_url = resolve_env("ASR_BASE_URL", service_id="asr", default="").strip()
     api_key = resolve_env("ASR_API_KEY", service_id="asr", default="").strip()
@@ -219,6 +223,19 @@ async def start_audio_stream(request: AsrLiveStartRequest):
     payload["model"] = (request.model or default_model).strip() or default_model
     if not payload["metadata"]:
         payload["metadata"] = {"source": "polymorph-mic"}
+    _log_asr_event(
+        "start_requested",
+        {
+            "base_url": base_url,
+            "model": payload["model"],
+            "language": payload.get("language"),
+            "sample_rate": payload.get("sample_rate"),
+            "encoding": payload.get("encoding"),
+            "channels": payload.get("channels"),
+            "triage_enabled": payload.get("triage_enabled"),
+            "source": str((payload.get("metadata") or {}).get("source") or ""),
+        },
+    )
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
@@ -228,16 +245,47 @@ async def start_audio_stream(request: AsrLiveStartRequest):
                 headers = {"Content-Type": "application/json", **auth_headers}
                 resp = await client.post(endpoint, headers=headers, json=payload)
                 if resp.is_success:
+                    _log_asr_event(
+                        "start_upstream_ok",
+                        {
+                            "endpoint": endpoint,
+                            "status_code": resp.status_code,
+                            "auth_header": next(iter(auth_headers.keys()), "none"),
+                        },
+                    )
                     break
                 detail = resp.text[:500]
                 last_error = f"ASR live start failed: {resp.status_code} {detail}"
+                _log_asr_event(
+                    "start_upstream_error",
+                    {
+                        "endpoint": endpoint,
+                        "status_code": resp.status_code,
+                        "auth_header": next(iter(auth_headers.keys()), "none"),
+                        "detail": detail,
+                    },
+                )
                 if resp.status_code == 401:
                     continue
                 break
     except Exception as exc:  # noqa: BLE001
+        _log_asr_event(
+            "start_exception",
+            {
+                "endpoint": endpoint,
+                "message": str(exc),
+            },
+        )
         raise HTTPException(status_code=502, detail=f"ASR live start failed: {exc}") from exc
 
     if resp is None or not resp.is_success:
+        _log_asr_event(
+            "start_failed",
+            {
+                "endpoint": endpoint,
+                "detail": last_error or "ASR live start failed.",
+            },
+        )
         raise HTTPException(status_code=502, detail=last_error or "ASR live start failed.")
 
     try:
@@ -251,7 +299,26 @@ async def start_audio_stream(request: AsrLiveStartRequest):
     session_id = str(data.get("session_id") or "").strip()
     ws_url = _resolve_live_ws_url(base_url, str(data.get("ws_url") or ""))
     if not session_id or not ws_url:
+        _log_asr_event(
+            "start_invalid_payload",
+            {
+                "endpoint": endpoint,
+                "session_id": session_id,
+                "ws_url": ws_url,
+            },
+        )
         raise HTTPException(status_code=502, detail="ASR live start response missing session_id or ws_url.")
+
+    _log_asr_event(
+        "start_success",
+        {
+            "session_id": session_id,
+            "ws_url": ws_url,
+            "model_requested": str(data.get("model_requested") or payload["model"]).strip() or None,
+            "model_used": str(data.get("model_used") or "").strip() or None,
+            "fallback_used": bool(data.get("fallback_used")) if "fallback_used" in data else None,
+        },
+    )
 
     return AsrLiveStartResponse(
         session_id=session_id,

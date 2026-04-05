@@ -45,6 +45,11 @@ Direct OpenAI contract notes:
 - OpenAI-compatible normalization now also:
   - strips visible `<think>` content from answer text and stores it as `thinking`
   - recovers pseudo tool-call JSON into real tool calls when the named tool is actually registered
+  - supports model-selectable `xml_mcp_reasoning` compatibility mode for MiroThinker-style output tags:
+    - parses `<think>...</think>` into a reasoning channel
+    - parses `<use_mcp_tool>...</use_mcp_tool>` XML intent blocks into a gated tool-call channel
+    - validates `server_name`, `tool_name`, and JSON arguments before allowing tool execution
+    - blocks unknown/unapproved tools safely instead of executing raw XML intent blindly
   - suppresses visible `Step 1 / Step 2 / Next Actions` planning scaffolds when they are just tool-call leakage
   - buffers raw compat text until final normalization so leaked planning text does not hit the UI first
 
@@ -96,8 +101,11 @@ Chat request multimodal extensions:
 Live ASR microphone contract:
 - `POST /api/audio/stream/start` bootstraps a live ASR session using server-side ASR credentials.
 - The frontend then streams mono PCM16 16 kHz frames directly to the returned websocket URL.
-- The UI may render `partial_transcript` events live, but only `final_transcript` should be committed into the composer or voice turn.
+- The UI may render `partial_transcript` events live.
+- Main mic mode still treats `final_transcript` as the source of truth for inserting text into the composer.
+- Voice mode may idle-commit the latest non-empty transcript when upstream finalization is delayed, so the persistent live voice loop can continue without requiring a manual checkmark.
 - If the ASR gateway is in optional-auth mode, the harness should omit fake/stale bearer auth rather than failing the stream bootstrap with `401 Invalid bearer token`.
+- In the current gateway contract, a startup sequence that probes invalid auth headers and then succeeds with no auth is expected and not itself a failure.
 
 ## Tool Contract
 
@@ -166,14 +174,17 @@ Persistence behavior:
 
 The active internal voice lane is now:
 
-- live ASR final transcript
-- separate voice model text generation
-- realtime TTS stream as the primary speech path
-- HTTP synth as fallback
+- persistent live browser ASR session
+- finalized or idle-committed speech turn
+- separate voice-model full harness execution
+- Kokoro realtime TTS stream as the primary speech path
+- automatic resume to listening until the voice button is toggled off
+- legacy HTTP synth fallback disabled by default for the normal voice-button path
 
 `GET /api/voice/config` exposes:
 
 - voice-model provider/model
+- voice-model fallback
 - realtime TTS config status
 - realtime TTS base/model
 - available Kokoro preset voices
@@ -201,6 +212,13 @@ Realtime TTS rules:
 - browser sends `text_chunk` frames, then `text_complete`, then `end_stream`
 - gateway returns `audio_chunk`, `final_audio`, and `error`
 - browser playback should play chunk audio immediately and preserve final artifact URL when available
+- current default voice is `af_heart`
+- current validated live voice-model pairing is:
+  - primary `qwen3.5-122`
+  - fallback `omnicoder`
+- main chat and voice can now target different model names against the same unified gateway without code changes
+- the active voice route currently uses the normal `run_agent(...)` harness prompt stack
+- a dedicated `VOICE_AGENT_SYSTEM_PROMPT` helper exists in code, but it is not yet wired into the active voice route
 - model-to-model stream orchestration is not part of this contract yet
 
 ## Fleet Operator Contract

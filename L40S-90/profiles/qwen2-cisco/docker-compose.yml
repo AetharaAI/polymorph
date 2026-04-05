@@ -1,0 +1,96 @@
+networks:
+  aether-ops:
+    external: true
+services:
+  qwen3.5-2b:
+    image: vllm/vllm-openai:nightly
+    container_name: qwen3.5-2b
+    runtime: nvidia
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/qwen3.5-2b:/logs
+    ports:
+      - "8102:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Authorization: Bearer EMPTY' http://localhost:8000/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+    command: >
+      /models/cyankiwi/Qwen3.5-2B-AWQ-4bit
+      --trust-remote-code
+      --served-model-name qwen3.5-2b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --kv-cache-dtype fp8
+      --gpu-memory-utilization 0.20
+      --max-model-len 8192
+      --max-num-seqs 2
+      --max-num-batched-tokens 4096
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --enforce-eager
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --generation-config vllm
+      --api-key EMPTY
+    restart: unless-stopped
+
+  cisco-sec:
+    image: vllm/vllm-openai:nightly
+    container_name: cisco-sec
+    runtime: nvidia
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/blue-red:/logs
+    ports:
+      - "8101:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Authorization: Bearer EMPTY' http://localhost:8000/v1/models >/dev/null || exit 1"]
+      interval: 15s
+
+    command: >
+      /models/llm/fdtn-ai/Foundation-Sec-8B-Reasoning
+      --served-model-name cisco-sec
+      --host 0.0.0.0
+      --port 8000
+      --dtype bfloat16
+      --kv-cache-dtype fp8
+      --gpu-memory-utilization 0.55
+      --max-model-len 16384
+      --max-num-seqs 2
+      --max-num-batched-tokens 8192
+      --reasoning-parser minimax_m2
+      --enable-auto-tool-choice
+      --tool-call-parser llama3_json
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --trust-remote-code
+      --api-key EMPTY
+    restart: unless-stopped

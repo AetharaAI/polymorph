@@ -6,22 +6,28 @@ project:
 runtime:
   primary_harness_path: mini-agent
   provider_mode: unified_openai_compat_gateway_with_model_routing_and_explicit_fallback_support
-  primary_model: minicpm-v
+  primary_model: omnicoder
   internal_operator_mode: true
   fleet_operator_enabled: true
   channel_control_plane_enabled: true
-  channel_control_plane_status: telegram_webhook_bridge_scaffolded
+  channel_control_plane_status: telegram_webhook_bridge_live_slice_without_queue_whatsapp_or_action_receipts
   channel_reference_workspace: mcas
+  operational_autonomy_priority_order:
+    - message_adapter_layer
+    - syndicate_marketplace_adapter
+    - action_ledger_and_approval_gate
+    - outbound_notification_adapters
+    - opportunity_matching_and_agent_self_posting
   fleet_inventory_dir: fleet-inventory
   fleet_helper_scripts_dir: fleet-inventory/scripts
   fleet_execution_transport: ssh_over_tailscale
   fleet_destructive_actions_require_confirmation: true
   direct_openai_base_url: https://api.openai.com/v1
   unified_gateway_base_url: https://api.aetherpro.tech/v1
-  local_fallback_model_target: none_distinct_currently_configured
+  local_fallback_model_target: qwen3.5-9b
   explicit_fallback_enabled: true
   explicit_fallback_provider: openai_compat
-  effective_distinct_fallback_present: false
+  effective_distinct_fallback_present: true
   provider_env_load_order:
     - mini-agent/.env
     - mini-agent/backend/.env
@@ -42,6 +48,11 @@ runtime:
   dynamic_tool_schema_loading_enabled: true
   openai_compat_visible_reasoning_normalization_enabled: true
   openai_compat_raw_text_streaming_deferred_until_normalization: true
+  openai_compat_model_selectable_xml_mcp_reasoning_compat_enabled: true
+  openai_compat_model_compat_mode_envs:
+    - OPENAI_COMPAT_MODEL_COMPAT_MODE
+    - OPENAI_COMPAT_MODEL_COMPAT_MODE_MAP_JSON
+    - OPENAI_COMPAT_XML_MCP_ALLOWED_SERVERS
   temporal_context_enabled: true
   temporal_context_includes:
     - current_utc
@@ -53,12 +64,18 @@ runtime:
     - elapsed_since_previous_agent_run
   direct_audio_multimodal_enabled: false
   voice_mode_enabled: true
-  voice_mode_path: live_asr_final_or_typed_voice_pane_to_qwen35_4b_to_realtime_tts_stream_with_http_fallback
+  voice_mode_path: persistent_live_browser_voice_session_to_full_harness_loop_to_kokoro_realtime_tts_with_auto_resume
   voice_agent_provider: openai_compat
-  voice_agent_model: qwen3.5-4b
+  voice_agent_model: qwen3.5-122
+  voice_agent_fallback_model: omnicoder
   voice_agent_base_url: https://api.aetherpro.tech/v1
   voice_realtime_tts_enabled: true
   voice_realtime_tts_transport: gateway_realtime_stream
+  voice_default_kokoro_voice: af_heart
+  voice_idle_commit_fallback_enabled: true
+  voice_browser_logging_enabled: true
+  voice_backend_logging_enabled: true
+  voice_dedicated_persona_prompt_wired: false
   voice_model_to_model_streams_deferred: true
 openai_notes:
   chat_completions_supported: true
@@ -71,17 +88,25 @@ voice_services:
   asr_base_url: https://asr.aetherpro.us
   tts_base_url: https://tts.aetherpro.us
   mic_composer_flow: live_asr_websocket_partial_then_final_into_textbox
-  voice_pane_flow: live_asr_final_transcript_to_qwen35_4b_then_http_tts_playback
+  voice_pane_flow: live_asr_partial_plus_final_or_idle_commit_to_voice_turn_then_kokoro_realtime_stream_then_auto_resume
   asr_gateway_auth_mode: optional_auth_omit_invalid_bearer
   live_operator_verified: true
-  live_operator_verified_on: 2026-03-13
+  live_operator_verified_on: 2026-03-17
 model_runner_state:
   tracked_layout_root: model-runners/
-  l40s_90_active_voice_runner: qwen3.5-4b
+  l40s_90_active_voice_runner: qwen3.5-9b
+  l40s_180_active_primary_reasoning_runner: qwen3.5-122
   l40s_90_known_good_runners:
     - qwen3.5-35b
     - qwen3.5-9b
     - qwen3.5-4b
+    - omnicoder
+  current_operator_validated_voice_config:
+    primary: qwen3.5-122
+    fallback: omnicoder
+    notes:
+      - conversation_quality_is_better_than_the_smaller_voice_model_for_this_internal_loop
+      - main_chat_model_can_remain_omnicoder_while_voice_uses_qwen3.5-122
 known_active_docs:
   topology: AETHERPRO_INFRA_TOPOLOGY.md
   node_access_note: Tailscale-&-Node-Access-Convo-Poly.md
@@ -91,3 +116,7 @@ known_active_docs:
   public_capabilities: mini-agent/docs/AetherOps-Harness-Public-Capabilities.md
   roadmap: mini-agent/docs/Autonomous-Control-Plane-Roadmap.md
   benchmark_tool_reference: HARNESS_TOOL_REFERENCE.md
+  operational_autonomy_roadmap: mini-agent/docs/Autonomous-Control-Plane-Roadmap.md
+  voice_freeze_context: VOICE_REALTIME_IMPLEMENTATION_CONTEXT_2026-03-17.md
+  voice_freeze_state: VOICE_REALTIME_PROJECT_STATE_2026-03-17.md
+  llm_handoff: LLM_HANDOFF_CURRENT_STATE_2026-03-17.md

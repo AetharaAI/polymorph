@@ -63,6 +63,8 @@ provider_contract:
   compat_output_normalization:
     think_tag_rule: strip_from_visible_text_and_capture_as_thinking
     pseudo_tool_call_rule: recover_json_name_plus_arguments_patterns_into_real_tool_calls_when_tool_is_registered
+    xml_mcp_reasoning_mode: model_selectable_xml_mcp_reasoning_parser_with_reasoning_channel_tool_call_channel_final_answer_channel_split
+    xml_mcp_reasoning_tool_gate_rule: parse_intent_then_validate_server_name_tool_name_and_json_arguments_then_allow_only_approved_registry_tools
     planning_scaffold_rule: suppress_visible_step_by_step_tool_planning_when_recovered_tool_call_exists
     text_streaming_rule: buffer_openai_compat_text_until_final_normalization
 api_contract:
@@ -142,8 +144,16 @@ api_contract:
         - VOICE_AGENT_BASE_URL
         - VOICE_AGENT_API_KEY
         - VOICE_AGENT_MODEL
-      default_model_target: qwen3.5-4b
-      tts_output_route: realtime_tts_stream_primary_http_audio_fallback_secondary
+        - VOICE_AGENT_FALLBACK_MODEL
+      current_live_primary: qwen3.5-122
+      current_live_fallback: omnicoder
+      independent_from_main_chat_model: true
+      unified_gateway_model_switch_rule: model_name_only_change_is_sufficient_when_backends_are_registered_behind_https_api_aetherpro_tech_v1
+      main_chat_model_current_live: omnicoder
+      voice_prompt_stack_rule: active_voice_lane_uses_run_agent_full_harness_prompt_stack
+      dedicated_voice_prompt_helper_present_but_not_wired: true
+      default_model_target: qwen3.5-122
+      tts_output_route: kokoro_realtime_stream_primary_legacy_http_fallback_disabled_by_default
 tool_contract:
   registry: mini-agent/backend/agent/tools/registry.py
   dispatch: mini-agent/backend/agent/tools/registry.py
@@ -203,14 +213,14 @@ live_asr_contract:
     server:
       - partial_transcript
       - final_transcript
-  transcript_rule: final_transcript_is_source_of_truth
+  transcript_rule: final_transcript_is_source_of_truth_but_voice_mode_may_idle_commit_latest_partial_when_upstream_finalization_is_delayed
 voice_http_tts_contract:
   tts_base_envs:
     - TTS_BASE_URL
     - TTS_API_KEY
   synthesis_route: /tts
   default_voice_env: VOICE_TTS_PREDEFINED_VOICE_ID
-  default_voice_value: Emily.wav
+  default_voice_value: af_heart
 voice_realtime_tts_contract:
   bootstrap_rule: backend_starts_gateway_stream_and_returns_ws_bootstrap_via_voice_turn
   bootstrap_base_envs:
@@ -229,6 +239,15 @@ voice_realtime_tts_contract:
       - final_audio
       - error
   playback_rule: browser_plays_audio_chunk_events_immediately_and_persists_final_audio_url_when_available
+  current_default_voice: af_heart
+  current_model: kokoro_realtime
+  browser_debug_channels:
+    - LiveASR
+    - VoiceSession
+    - VoiceMode
+  backend_debug_channels:
+    - AudioStream
+    - VoiceTurn
 fleet_operator_contract:
   inventory_dir: fleet-inventory
   canonical_sources:

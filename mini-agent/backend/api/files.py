@@ -92,21 +92,13 @@ async def delete_file(file_id: str, session_id: str):
 @router.get("/files/download/{file_id}")
 async def download_file(file_id: str):
     """Download a file by file_id."""
-    # Find the file in any session directory
-    uploads_dir = file_ops.UPLOAD_DIR
-    if not uploads_dir.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    for session_dir in uploads_dir.iterdir():
-        if not session_dir.is_dir():
-            continue
-        for file_path in session_dir.iterdir():
-            if file_path.is_file() and file_path.name.startswith(file_id):
-                return FileResponse(
-                    path=str(file_path),
-                    filename=file_path.name.split("_", 1)[1] if "_" in file_path.name else file_path.name,
-                    media_type="application/octet-stream"
-                )
+    file_path = file_ops._find_file_path(file_id)  # noqa: SLF001 - internal helper reuse
+    if file_path and file_path.is_file():
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name.split("_", 1)[1] if "_" in file_path.name else file_path.name,
+            media_type="application/octet-stream",
+        )
 
     raise HTTPException(status_code=404, detail="File not found")
 
@@ -114,12 +106,7 @@ async def download_file(file_id: str):
 @router.get("/files/download-session/{session_id}")
 async def download_session_files(session_id: str, background_tasks: BackgroundTasks):
     """Download all files for a session as a zip archive."""
-    uploads_dir = file_ops.UPLOAD_DIR
-    session_dir = uploads_dir / session_id
-    if not session_dir.exists() or not session_dir.is_dir():
-        raise HTTPException(status_code=404, detail="Session has no files")
-
-    files = [p for p in session_dir.iterdir() if p.is_file()]
+    files = file_ops.get_session_file_paths(session_id)
     if not files:
         raise HTTPException(status_code=404, detail="Session has no files")
 

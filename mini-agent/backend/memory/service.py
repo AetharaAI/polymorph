@@ -186,6 +186,10 @@ class MemoryService:
             f"[namespace={namespace_label} mongo_db={self.mongo_db_name}]"
         )
 
+    def get_redis_client(self):
+        """Return the underlying Redis client for shared subsystems (e.g., streams)."""
+        return self.redis
+
     async def close(self):
         """Close all connections."""
         if self.redis:

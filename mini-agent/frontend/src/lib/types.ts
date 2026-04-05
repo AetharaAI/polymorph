@@ -67,6 +67,7 @@ export interface UsageStats {
   max_iterations: number;
   context_input_tokens: number;
   context_window: number;
+  context_window_source?: 'configured' | 'learned' | 'estimate';
   provider?: string;
   model?: string;
   tool_calls?: number;

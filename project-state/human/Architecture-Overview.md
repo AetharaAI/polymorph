@@ -9,6 +9,11 @@ This repository contains the internal AetherOps/PolyMorph harness and related in
 - `mini-agent/`
   - active harness product/runtime
   - frontend, backend, providers, tools, evals, docs
+  - includes the now-working persistent `PolyMorph Voice Mode` browser loop:
+    - live ASR capture
+    - voice-model full harness execution
+    - Kokoro realtime TTS playback
+    - automatic return to listening
 - `L40S-90/`
   - LiteLLM and local inference node configuration
 - `litellm-L40S-180/`
@@ -23,6 +28,8 @@ This repository contains the internal AetherOps/PolyMorph harness and related in
   - internal fleet control-plane modules for inventory loading, script audit, and SSH execution
 - `mini-agent/backend/channels/`
   - internal channel control plane and adapter scaffolding for Telegram-first ingress
+- `mini-agent/docs/Autonomous-Control-Plane-Roadmap.md`
+  - ordered operational build list: message adapters first, Syndicate second, action ledger third
 - `HARNESS_TOOL_REFERENCE.md`
   - exact tool inventory document for benchmark/profile generation
 - `mcas/`

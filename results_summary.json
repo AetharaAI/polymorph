@@ -1,0 +1,18 @@
+{
+  "qwen3.5-122": {
+    "runs": 18,
+    "success_rate": 0.0,
+    "mean_score": 0.0,
+    "median_ttft_sec": null,
+    "median_total_latency_sec": null,
+    "median_tokens_per_sec_approx": null
+  },
+  "omnicoder": {
+    "runs": 18,
+    "success_rate": 0.5,
+    "mean_score": 0.7667,
+    "median_ttft_sec": 0.3807,
+    "median_total_latency_sec": 0.6405,
+    "median_tokens_per_sec_approx": 5.8011
+  }
+}

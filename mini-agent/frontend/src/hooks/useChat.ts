@@ -196,12 +196,9 @@ export function useChat(sessionId: string) {
           .map(coerceArtifact)
           .filter((a): a is Artifact => Boolean(a));
 
-        if (hydratedMessages.length > 0) {
-          setMessages(hydratedMessages);
-        }
-        if (hydratedArtifacts.length > 0) {
-          setArtifacts(hydratedArtifacts);
-        }
+        // Backend state is authoritative when available, even when empty.
+        setMessages(hydratedMessages);
+        setArtifacts(hydratedArtifacts);
       } catch {
         // Session may not exist in backend yet; local snapshot remains source of truth.
       }
@@ -345,6 +342,7 @@ export function useChat(sessionId: string) {
           max_iterations: (event.max_iterations as number) || 0,
           context_input_tokens: (event.context_input_tokens as number) || 0,
           context_window: (event.context_window as number) || 204800,
+          context_window_source: (event.context_window_source as 'configured' | 'learned' | 'estimate') || 'estimate',
           provider: (event.provider as string) || undefined,
           model: (event.model as string) || undefined,
           tool_calls: (event.tool_calls as number) || 0,

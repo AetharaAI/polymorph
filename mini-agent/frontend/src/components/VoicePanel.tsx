@@ -79,7 +79,7 @@ export function VoicePanel({
   }, [lastAssistantAudio]);
 
   return (
-    <section className="mx-4 mt-4 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/8 via-card to-card">
+    <section className="mx-4 mt-4 shrink-0 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/8 via-card to-card">
       <div className="flex flex-wrap items-center gap-3 border-b border-border/70 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <img
@@ -117,7 +117,7 @@ export function VoicePanel({
       <div ref={containerRef} className="max-h-64 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="rounded-xl border border-dashed border-border bg-card/60 p-3 text-sm text-muted-foreground">
-            Voice turns land here instead of the main text pane. The mic button still uses live ASR, and the voice button sends the finalized transcript through the full agent loop before audio playback lands here.
+            Voice turns land here instead of the main text pane. The mic button still uses live ASR with manual finalize, and the voice button now stays live so finalized speech turns flow through the full agent loop until you toggle voice mode off.
           </div>
         )}
 

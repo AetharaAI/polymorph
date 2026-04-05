@@ -13,8 +13,14 @@ from typing import Any
 from backend.agent.tools.artifact_validator import validate_artifact
 from backend.agent.tools.workspace import get_session_workspace
 
-# Canonical artifact root anchored to the repo package, not process cwd.
+# Canonical artifact root anchored to the mini-agent package, not process cwd.
 UPLOAD_DIR = (Path(__file__).resolve().parents[3] / "uploads").resolve()
+_LEGACY_UPLOAD_DIRS = [
+    # Historical backend-local artifact root.
+    (Path(__file__).resolve().parents[2] / "uploads").resolve(),
+    # Older repo-root relative artifact root.
+    (Path(__file__).resolve().parents[4] / "uploads").resolve(),
+]
 TEXT_EXTENSIONS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".yaml", ".yml", ".html", ".xml", ".sh"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 IMAGE_MIME_TYPES = {
@@ -39,6 +45,35 @@ def _get_session_dir(session_id: str) -> Path:
     return session_dir
 
 
+def _all_upload_roots() -> list[Path]:
+    roots: list[Path] = []
+    for candidate in [UPLOAD_DIR, *_LEGACY_UPLOAD_DIRS]:
+        if candidate not in roots:
+            roots.append(candidate)
+    return roots
+
+
+def get_session_file_paths(session_id: str) -> list[Path]:
+    """Collect session files across canonical and legacy artifact roots."""
+    files: list[Path] = []
+    seen: set[Path] = set()
+
+    for root in _all_upload_roots():
+        session_dir = root / session_id
+        if not session_dir.exists() or not session_dir.is_dir():
+            continue
+        for file_path in session_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            resolved = file_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            files.append(resolved)
+
+    return files
+
+
 def _generate_file_id(filename: str, session_id: str) -> str:
     """Generate a unique file ID."""
     raw = f"{session_id}:{filename}:{os.urandom(8).hex()}"
@@ -47,15 +82,15 @@ def _generate_file_id(filename: str, session_id: str) -> str:
 
 def _find_file_path(file_id: str) -> Path | None:
     """Find a stored file path by file_id across all session directories."""
-    if not UPLOAD_DIR.exists():
-        return None
-
-    for session_dir in UPLOAD_DIR.iterdir():
-        if not session_dir.is_dir():
+    for uploads_root in _all_upload_roots():
+        if not uploads_root.exists():
             continue
-        for file_path in session_dir.iterdir():
-            if file_path.is_file() and file_path.name.startswith(file_id):
-                return file_path
+        for session_dir in uploads_root.iterdir():
+            if not session_dir.is_dir():
+                continue
+            for file_path in session_dir.iterdir():
+                if file_path.is_file() and file_path.name.startswith(file_id):
+                    return file_path
     return None
 
 
@@ -225,19 +260,23 @@ async def read_file(file_id: str, max_chars: int = 50000) -> str:
 
 async def list_files(session_id: str) -> str:
     """List all files for a session."""
-    session_dir = _get_session_dir(session_id)
-
-    files = []
-    for file_path in session_dir.iterdir():
-        if file_path.is_file():
-            # Extract original filename from stored name
-            parts = file_path.name.split("_", 1)
-            original_name = parts[1] if len(parts) > 1 else file_path.name
-            files.append({
-                "file_id": parts[0] if len(parts) > 1 else file_path.stem,
+    files: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for file_path in get_session_file_paths(session_id):
+        parts = file_path.name.split("_", 1)
+        file_id = parts[0] if len(parts) > 1 else file_path.stem
+        if file_id in seen_ids:
+            continue
+        seen_ids.add(file_id)
+        original_name = parts[1] if len(parts) > 1 else file_path.name
+        files.append(
+            {
+                "file_id": file_id,
                 "filename": original_name,
-                "size": file_path.stat().st_size
-            })
+                "size": file_path.stat().st_size,
+                "path": str(file_path),
+            }
+        )
 
     if not files:
         return json.dumps([], indent=2)

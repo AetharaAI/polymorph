@@ -3,12 +3,24 @@ import { startLiveAsrStream } from '@/lib/api';
 
 type RecordingMode = 'asr' | 'voice';
 
+interface LiveAsrStartOptions {
+  onFinalTranscript?: (text: string) => void | Promise<void>;
+}
+
 const TARGET_SAMPLE_RATE = 16000;
 const TARGET_CHANNELS = 1;
 const FRAME_ENCODING = 'pcm_s16le';
 const BUFFER_SIZE = 4096;
 const LEVEL_BAR_COUNT = 18;
 const DEFAULT_LEVELS = Array.from({ length: LEVEL_BAR_COUNT }, () => 0.1);
+const VOICE_IDLE_COMMIT_MS = 1500;
+
+function logLiveAsr(event: string, payload: Record<string, unknown> = {}) {
+  console.info('[LiveASR]', {
+    event,
+    ...payload,
+  });
+}
 
 function downsampleMonoBuffer(input: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
   if (inputSampleRate === outputSampleRate) {
@@ -85,8 +97,9 @@ interface UseLiveAsrStreamResult {
   partialTranscript: string;
   audioLevels: number[];
   error: string | null;
-  start: (mode: RecordingMode) => Promise<void>;
+  start: (mode: RecordingMode, options?: LiveAsrStartOptions) => Promise<void>;
   stop: () => Promise<string>;
+  cancel: (options?: { preserveTranscript?: boolean }) => void;
 }
 
 export function useLiveAsrStream(): UseLiveAsrStreamResult {
@@ -109,11 +122,15 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
   const startedAtRef = useRef(0);
   const stoppedRef = useRef(false);
   const finalTranscriptRef = useRef('');
+  const latestTranscriptRef = useRef('');
   const finalizeTimerRef = useRef<number | null>(null);
+  const voiceIdleCommitTimerRef = useRef<number | null>(null);
   const finalPromiseRef = useRef<{
     resolve: (value: string) => void;
     reject: (reason?: unknown) => void;
   } | null>(null);
+  const finalTranscriptHandlerRef = useRef<((text: string) => void | Promise<void>) | null>(null);
+  const lastDeliveredFinalRef = useRef('');
 
   const resetLevels = () => {
     setAudioLevels(Array.from({ length: LEVEL_BAR_COUNT }, () => 0.1));
@@ -123,6 +140,13 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     if (finalizeTimerRef.current != null) {
       window.clearTimeout(finalizeTimerRef.current);
       finalizeTimerRef.current = null;
+    }
+  };
+
+  const clearVoiceIdleCommitTimer = () => {
+    if (voiceIdleCommitTimerRef.current != null) {
+      window.clearTimeout(voiceIdleCommitTimerRef.current);
+      voiceIdleCommitTimerRef.current = null;
     }
   };
 
@@ -149,6 +173,7 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
+    clearVoiceIdleCommitTimer();
 
     processorRef.current?.disconnect();
     processorRef.current = null;
@@ -190,7 +215,10 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     if (!options?.preserveTranscript) {
       setPartialTranscript('');
       finalTranscriptRef.current = '';
+      latestTranscriptRef.current = '';
+      lastDeliveredFinalRef.current = '';
     }
+    finalTranscriptHandlerRef.current = null;
   }, []);
 
   useEffect(() => () => {
@@ -223,7 +251,7 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     tick();
   }, []);
 
-  const start = useCallback(async (nextMode: RecordingMode) => {
+  const start = useCallback(async (nextMode: RecordingMode, options?: LiveAsrStartOptions) => {
     if (isRecording || isFinalizing) {
       return;
     }
@@ -233,9 +261,13 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     setMode(nextMode);
     setPartialTranscript('');
     finalTranscriptRef.current = '';
+    latestTranscriptRef.current = '';
+    lastDeliveredFinalRef.current = '';
     sequenceRef.current = 0;
     startedAtRef.current = Date.now();
     stoppedRef.current = false;
+    finalTranscriptHandlerRef.current = options?.onFinalTranscript || null;
+    logLiveAsr('session_start_requested', { mode: nextMode });
 
     try {
       const liveSession = await startLiveAsrStream({
@@ -253,11 +285,19 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
         const handleError = () => {
           socket.onopen = null;
           socket.onerror = null;
+          logLiveAsr('ws_connect_failed', { mode: nextMode, ws_url: liveSession.ws_url });
           reject(new Error('Unable to connect to the live ASR websocket.'));
         };
         socket.onopen = () => {
           socket.onopen = null;
           socket.onerror = null;
+          logLiveAsr('ws_connected', {
+            mode: nextMode,
+            session_id: liveSession.session_id,
+            ws_url: liveSession.ws_url,
+            model_requested: liveSession.model_requested,
+            model_used: liveSession.model_used,
+          });
           resolve(socket);
         };
         socket.onerror = handleError;
@@ -300,13 +340,63 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
         try {
           const message = JSON.parse(String(event.data)) as { type?: string; text?: string };
           if (message.type === 'partial_transcript') {
-            setPartialTranscript((message.text || '').trim());
+            const partialText = (message.text || '').trim();
+            latestTranscriptRef.current = partialText;
+            setPartialTranscript(partialText);
+            if (partialText) {
+              logLiveAsr('partial_transcript', {
+                mode: nextMode,
+                chars: partialText.length,
+                preview: partialText.slice(0, 120),
+              });
+            }
+            const finalHandler = finalTranscriptHandlerRef.current;
+            if (!stoppedRef.current && finalHandler && partialText) {
+              clearVoiceIdleCommitTimer();
+              voiceIdleCommitTimerRef.current = window.setTimeout(() => {
+                const candidate = latestTranscriptRef.current.trim();
+                if (!candidate || stoppedRef.current || !finalTranscriptHandlerRef.current) {
+                  return;
+                }
+                if (lastDeliveredFinalRef.current === candidate) {
+                  return;
+                }
+                lastDeliveredFinalRef.current = candidate;
+                logLiveAsr('idle_commit', {
+                  mode: nextMode,
+                  chars: candidate.length,
+                  preview: candidate.slice(0, 160),
+                  idle_ms: VOICE_IDLE_COMMIT_MS,
+                });
+                void Promise.resolve(finalTranscriptHandlerRef.current(candidate)).catch(error => {
+                  setError(error instanceof Error ? error.message : 'Voice transcript handler failed.');
+                });
+              }, VOICE_IDLE_COMMIT_MS);
+            }
             return;
           }
           if (message.type === 'final_transcript') {
             const finalText = (message.text || '').trim();
             finalTranscriptRef.current = finalText;
+            latestTranscriptRef.current = finalText;
             setPartialTranscript(finalText);
+            clearVoiceIdleCommitTimer();
+            logLiveAsr('final_transcript', {
+              mode: nextMode,
+              chars: finalText.length,
+              preview: finalText.slice(0, 160),
+            });
+            const finalHandler = finalTranscriptHandlerRef.current;
+            if (!stoppedRef.current && finalHandler && finalText) {
+              if (lastDeliveredFinalRef.current === finalText) {
+                return;
+              }
+              lastDeliveredFinalRef.current = finalText;
+              void Promise.resolve(finalHandler(finalText)).catch(error => {
+                setError(error instanceof Error ? error.message : 'Voice transcript handler failed.');
+              });
+              return;
+            }
             if (stoppedRef.current) {
               resolvePendingFinal(finalText);
               cleanup({ preserveTranscript: false });
@@ -319,6 +409,7 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
 
       ws.onerror = () => {
         const nextError = new Error('Live ASR stream error.');
+        logLiveAsr('ws_error', { mode: nextMode, message: nextError.message });
         setError(nextError.message);
         rejectPendingFinal(nextError);
         cleanup({ preserveTranscript: false, preserveError: true });
@@ -326,6 +417,12 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
 
       ws.onclose = () => {
         wsRef.current = null;
+        logLiveAsr('ws_closed', {
+          mode: nextMode,
+          stopped: stoppedRef.current,
+          has_final: Boolean(finalTranscriptRef.current.trim()),
+          has_partial: Boolean(latestTranscriptRef.current.trim()),
+        });
         if (!stoppedRef.current) {
           const nextError = new Error('Live ASR stream closed unexpectedly.');
           setError(nextError.message);
@@ -372,8 +469,18 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
       silentGain.connect(audioContext.destination);
       startAudioMonitor(analyser);
       setIsRecording(true);
+      logLiveAsr('session_started', {
+        mode: nextMode,
+        session_id: liveSession.session_id,
+        model_requested: liveSession.model_requested,
+        model_used: liveSession.model_used,
+      });
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error('Unable to start live ASR.');
+      logLiveAsr('session_start_failed', {
+        mode: nextMode,
+        message: nextError.message,
+      });
       setError(nextError.message);
       cleanup({ preserveError: true });
       throw nextError;
@@ -401,6 +508,11 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     setIsRecording(false);
     setIsFinalizing(true);
     setError(null);
+    logLiveAsr('stop_requested', {
+      mode,
+      has_partial: Boolean(latestTranscriptRef.current.trim()),
+      has_final: Boolean(finalTranscriptRef.current.trim()),
+    });
 
     const finalTranscript = await new Promise<string>((resolve, reject) => {
       finalPromiseRef.current = { resolve, reject };
@@ -416,6 +528,17 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     return finalTranscript;
   }, [cleanup, isFinalizing, isRecording, rejectPendingFinal]);
 
+  const cancel = useCallback((options?: { preserveTranscript?: boolean }) => {
+    stoppedRef.current = true;
+    logLiveAsr('session_cancelled', {
+      mode,
+      preserve_transcript: options?.preserveTranscript ?? false,
+      latest_chars: latestTranscriptRef.current.trim().length,
+    });
+    rejectPendingFinal(new Error('Live ASR session cancelled.'));
+    cleanup({ preserveTranscript: options?.preserveTranscript ?? false });
+  }, [cleanup, mode, rejectPendingFinal]);
+
   return {
     isRecording,
     isFinalizing,
@@ -425,5 +548,6 @@ export function useLiveAsrStream(): UseLiveAsrStreamResult {
     error,
     start,
     stop,
+    cancel,
   };
 }

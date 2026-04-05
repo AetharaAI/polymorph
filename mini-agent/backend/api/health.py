@@ -93,7 +93,7 @@ async def diagnostics(request: Request):
 
     tts_base_url = resolve_env("TTS_BASE_URL", service_id="tts", default="").strip()
     tts_api_key = resolve_env("TTS_API_KEY", service_id="tts", default="").strip()
-    tts_model = resolve_env("TTS_MODEL", service_id="tts", default="chatterbox").strip() or "chatterbox"
+    tts_model = resolve_env("TTS_MODEL", service_id="tts", default="kokoro_realtime").strip() or "kokoro_realtime"
     tts_timeout = float(resolve_env("TTS_TIMEOUT_SECONDS", service_id="tts", default="20"))
     tts_enabled = bool(tts_base_url)
     tts_health = {

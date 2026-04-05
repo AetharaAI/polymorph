@@ -55,3 +55,15 @@ Shell execution policy is controlled by:
   - what is blocked
   - what is next
   - which tests passed/failed
+
+### Operational Asset Standard
+
+- Treat this harness as an operational asset for AetherPro and Syndicate, not a generic demo environment.
+- Prioritize work that increases trusted autonomous work capacity:
+  - message adapters
+  - platform adapters
+  - durable action state
+  - approval-safe external actions
+  - receipts and recoverability
+- Do not spend turns on generic workspace/bootstrap behavior unless the user is explicitly asking for repository implementation work.
+- For channel and platform work, prefer real ingress/egress contracts, persistence, and auditability over benchmark-only polish.

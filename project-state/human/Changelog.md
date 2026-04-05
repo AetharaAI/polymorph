@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-04-02
+- Added a narrow OpenAI-compatible model-compatibility adapter path for MiroThinker-style outputs via `xml_mcp_reasoning`.
+- Implemented parsing channels for `<think>` reasoning, `<use_mcp_tool>` XML intent, and final answer text while preserving raw output in compatibility telemetry logs.
+- Added policy-gated XML tool intent handling: validate server name, validate tool name against approved registry, validate JSON arguments, and block unknown or malformed tool intents safely.
+- Added minimal parser tests for think-only, think+tool-call, malformed XML, malformed arguments JSON, and plain-answer outputs.
+
+## 2026-04-01
+- Hardened artifact retrieval compatibility across canonical and legacy storage roots to reduce post-restart `404` preview/download failures when older sessions reference files written under prior paths.
+- Updated file listing and session zip download behavior to include files from both current and legacy artifact roots for the same session id.
+
+## 2026-03-20
+- Reframed the active roadmap around operational autonomy instead of generic feature growth.
+- Marked the message adapter layer as the first current priority, with Syndicate as the first platform-specific autonomy target after adapters.
+- Updated repo instructions and state docs so future runs inherit the operational-asset standard instead of defaulting to benchmark/demo-first behavior.
+- Recorded the real state of the current channel slice more explicitly: Telegram webhook bridge exists, but queueing, WhatsApp, and canonical action receipts are still missing.
+
+## 2026-03-17
+- Completed the persistent browser voice loop in PolyMorph: the voice button now starts a live session, speech turns auto-dispatch into `/api/voice/turn`, Kokoro realtime TTS plays the reply, and the session resumes listening until toggled off.
+- Removed the old practical dependence on Chatterbox/Moss/`Emily.wav` for the normal voice-button path, set Kokoro realtime as the intended TTS path, and made `af_heart` the default voice.
+- Added browser-side and backend-side debugging around voice execution:
+  - browser: `[LiveASR]`, `[VoiceSession]`, `[VoiceMode]`
+  - backend: `[AudioStream]`, `[VoiceTurn]`
+- Added an idle-commit fallback for voice mode so the live loop can continue when ASR partials are visible but upstream finalization is delayed.
+- Verified that the current live voice model can be set independently from the main chat model through env alone.
+- Updated the active validated voice configuration to:
+  - primary `qwen3.5-122`
+  - fallback `omnicoder`
+  - gateway `https://api.aetherpro.tech/v1`
+  - Kokoro realtime TTS with default voice `af_heart`
+- Confirmed that the active voice lane currently uses the normal `run_agent(...)` harness prompt stack rather than a dedicated lightweight voice persona prompt.
+- Added root recovery/handoff documents for the voice milestone:
+  - `VOICE_REALTIME_IMPLEMENTATION_CONTEXT_2026-03-17.md`
+  - `VOICE_REALTIME_PROJECT_STATE_2026-03-17.md`
+  - `LLM_HANDOFF_CURRENT_STATE_2026-03-17.md`
+
 ## 2026-03-13
 - Confirmed the current realtime ASR to PolyMorph Voice Mode to TTS stack is working in live operator use and recorded that verification in project-state.
 - Added a root proprietary `LICENSE` and a repo-level `.gitignore` for initial private git versioning.

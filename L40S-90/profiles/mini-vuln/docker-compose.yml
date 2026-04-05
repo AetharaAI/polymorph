@@ -1,0 +1,92 @@
+networks:
+  aether-ops:
+    external: true
+services:
+  vulnllm-r-7b:
+    image: vllm/vllm-openai:nightly
+    container_name: vulnllm-r-7b
+    runtime: nvidia
+    networks:
+      - aether-ops
+
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_HOME: /cache
+      HF_HUB_CACHE: /cache/.hf-cache
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+      - ./logs/vulnllm-r-7b:/logs
+    ports:
+      - "8102:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Authorization: Bearer EMPTY' http://localhost:8000/v1/models >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    command: >
+      /models/llm/cyankiwi/VulnLLM-R-7B-AWQ-8bit
+      --served-model-name vulnllm-r-7b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --gpu-memory-utilization 0.26
+      --max-model-len 4096
+      --max-num-seqs 2
+      --max-num-batched-tokens 4096
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --tokenizer-mode auto
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --generation-config vllm
+      --trust-remote-code
+      --api-key EMPTY
+    restart: unless-stopped
+
+  minicpm-v:
+    image: vllm/vllm-openai:nightly
+    container_name: minicpm-v
+    networks:
+      - aether-ops
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    env_file:
+      - .env
+    runtime: nvidia
+    depends_on:
+      vulnllm-r-7b:
+        condition: service_healthy
+    environment:
+      - HF_HOME=/cache
+      - VLLM_VIDEO_LOADER_BACKEND=enhanced_opencv
+    volumes:
+      - /mnt/aetherpro/models:/models
+      - /mnt/aetherpro/cache:/cache
+
+    ports:
+      - "8101:8000"
+
+    command: >
+      /models/vision/openbmb/MiniCPM-V-4_5-AWQ
+      --served-model-name minicpm-v
+      --dtype auto
+      --gpu-memory-utilization 0.68
+      --max-model-len 4096
+      --trust-remote-code
+      --port 8000
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --enable-prefix-caching
+      --enforce-eager
+      --limit-mm-per-prompt '{"image":1, "video": 1}'
+      --api-key EMPTY
+      --generation-config vllm
+
+    restart: unless-stopped

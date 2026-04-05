@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -16,6 +17,7 @@ AUDIO_SUPPORT_ERROR_HINTS = (
 
 import httpx
 
+from backend.agent.providers.compat import parse_xml_mcp_reasoning_output
 from backend.agent.providers.base import BaseLLMProvider, LLMContentBlock, LLMResponse, LLMUsage
 from backend.config.gateway import (
     resolve_openai_compat_api_key,
@@ -127,6 +129,16 @@ class OpenAICompatProvider(BaseLLMProvider):
         self._learned_context_window: int | None = None
         self._log_requests = os.getenv("OPENAI_COMPAT_LOG_REQUESTS", "true").strip().lower() in {"1", "true", "yes", "on"}
         self._log_full_payload = os.getenv("OPENAI_COMPAT_LOG_FULL_PAYLOAD", "false").strip().lower() in {"1", "true", "yes", "on"}
+        self._model_compat_mode = self._resolve_model_compat_mode()
+        allowed_servers_raw = os.getenv(
+            "OPENAI_COMPAT_XML_MCP_ALLOWED_SERVERS",
+            "harness,polymorph,default,local,my-tools",
+        )
+        self._xml_mcp_allowed_servers = {
+            str(part or "").strip().lower()
+            for part in allowed_servers_raw.split(",")
+            if str(part or "").strip()
+        }
 
     @property
     def provider_name(self) -> str:
@@ -140,8 +152,58 @@ class OpenAICompatProvider(BaseLLMProvider):
     def supports_image_prompt_blocks(self) -> bool:
         return True
 
+    def _is_mistral_strict_tool_family(self) -> bool:
+        model_name = (self._model_name or "").strip().lower()
+        if not model_name:
+            return False
+        normalized = model_name.replace("_", "-")
+        return "mistral" in normalized or "devstral" in normalized
+
+    def _resolve_model_compat_mode(self) -> str:
+        explicit_mode = str(os.getenv("OPENAI_COMPAT_MODEL_COMPAT_MODE", "") or "").strip().lower()
+        if explicit_mode:
+            return explicit_mode
+
+        raw_mapping = os.getenv("OPENAI_COMPAT_MODEL_COMPAT_MODE_MAP_JSON", "")
+        if not raw_mapping.strip():
+            return ""
+
+        try:
+            parsed = json.loads(raw_mapping)
+        except Exception:
+            return ""
+        if not isinstance(parsed, dict):
+            return ""
+
+        model_norm = str(self._model_name or "").strip().lower()
+        for raw_pattern, raw_mode in parsed.items():
+            pattern = str(raw_pattern or "").strip().lower()
+            mode = str(raw_mode or "").strip().lower()
+            if not pattern or not mode:
+                continue
+            if pattern in model_norm:
+                return mode
+        return ""
+
+    def _normalize_tool_call_id(self, tool_id: str) -> str:
+        raw = str(tool_id or "").strip()
+        if not raw:
+            return uuid.uuid4().hex[-9:]
+        if not self._is_mistral_strict_tool_family():
+            return raw
+
+        alnum = "".join(ch for ch in raw if ch.isalnum())
+        if len(alnum) == 9:
+            return alnum
+        if len(alnum) > 9:
+            return alnum[-9:]
+        digest = hashlib.sha1(raw.encode("utf-8", "ignore")).hexdigest()
+        merged = f"{alnum}{digest}"
+        return merged[:9]
+
     def _to_openai_messages(self, system: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        emitted_tool_call_ids: set[str] = set()
 
         for msg in messages:
             role = msg.get("role")
@@ -215,9 +277,11 @@ class OpenAICompatProvider(BaseLLMProvider):
                         if role != "assistant":
                             content_parts.append({"type": "text", "text": thinking_text})
                     elif block_type == "tool_use":
+                        tool_id = self._normalize_tool_call_id(block.get("tool_id") or block.get("id") or "")
+                        emitted_tool_call_ids.add(tool_id)
                         tool_calls.append(
                             {
-                                "id": block.get("tool_id") or block.get("id") or "",
+                                "id": tool_id,
                                 "type": "function",
                                 "function": {
                                     "name": block.get("tool_name") or block.get("name") or "",
@@ -226,13 +290,28 @@ class OpenAICompatProvider(BaseLLMProvider):
                             }
                         )
                     elif block_type == "tool_result":
-                        out.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": block.get("tool_use_id") or block.get("tool_id") or "",
-                                "content": str(block.get("content") or block.get("result") or ""),
-                            }
+                        tool_call_id = self._normalize_tool_call_id(
+                            block.get("tool_use_id") or block.get("tool_id") or ""
                         )
+                        tool_content = str(block.get("content") or block.get("result") or "")
+                        if tool_call_id in emitted_tool_call_ids:
+                            out.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "content": tool_content,
+                                }
+                            )
+                        else:
+                            # History compaction can orphan a tool result by dropping the
+                            # preceding assistant tool_call turn. Keep the evidence as text
+                            # instead of emitting an invalid tool-role sequence.
+                            content_parts.append(
+                                {
+                                    "type": "text",
+                                    "text": f"[Tool result]\n{tool_content}",
+                                }
+                            )
 
                 if role == "assistant":
                     message_content: Any = "\n".join(p for p in text_parts if p).strip() or None
@@ -456,6 +535,12 @@ class OpenAICompatProvider(BaseLLMProvider):
         normalized = model_name.replace("_", "-")
         return normalized.startswith("qwen3") or "/qwen3" in normalized
 
+    def _supports_chat_template_thinking_kwargs(self) -> bool:
+        # `chat_template_kwargs.enable_thinking` is currently a Qwen-specific
+        # compatibility knob in this harness. Sending it to Mistral tokenizers
+        # causes upstream request validation to fail before generation starts.
+        return self._is_qwen_reasoning_family()
+
     def _resolve_enable_thinking(self, enable_thinking: bool | None) -> bool | None:
         if self._is_direct_openai():
             return None
@@ -621,16 +706,100 @@ class OpenAICompatProvider(BaseLLMProvider):
         content_text = message.get("content")
         recovered_tool_calls: list[dict[str, Any]] = []
         if isinstance(content_text, str) and content_text.strip():
-            content_text, extracted_thoughts = self._extract_think_tags(content_text)
-            if extracted_thoughts:
-                thought_blob = "\n\n".join(part for part in extracted_thoughts if part.strip())
-                if thought_blob:
-                    reasoning_text = "\n\n".join(part for part in [reasoning_text, thought_blob] if part).strip()
+            raw_content_for_debug = str(content_text)
+            if self._model_compat_mode == "xml_mcp_reasoning":
+                compat_result = parse_xml_mcp_reasoning_output(
+                    raw_content_for_debug,
+                    available_tool_names=available_tool_names or set(),
+                    allowed_server_names=self._xml_mcp_allowed_servers or None,
+                )
+
+                self._log_request_event(
+                    "compat_xml_mcp_raw_output",
+                    {
+                        "compat_mode": self._model_compat_mode,
+                        "raw_output": compat_result.raw_output if self._log_full_payload else compat_result.raw_output[:2000],
+                    },
+                )
+                self._log_request_event(
+                    "compat_xml_mcp_parse",
+                    {
+                        "compat_mode": self._model_compat_mode,
+                        "raw_output_chars": len(compat_result.raw_output),
+                        "think_detected": bool(compat_result.reasoning_channel),
+                        "tool_blocks_detected": len(compat_result.tool_call_channel),
+                        "parse_success": len(compat_result.parse_errors) == 0,
+                        "parse_error_count": len(compat_result.parse_errors),
+                    },
+                )
+
+                if compat_result.reasoning_channel:
+                    reasoning_text = "\n\n".join(
+                        part for part in [reasoning_text, compat_result.reasoning_channel] if part
+                    ).strip()
+                content_text = compat_result.final_answer_channel
+
+                for idx, intent in enumerate(compat_result.tool_call_channel):
+                    if intent.allowed and isinstance(intent.arguments, dict):
+                        recovered_tool_calls.append(
+                            {
+                                "id": f"compat_xml_{intent.tool_name}_{idx}",
+                                "function": {
+                                    "name": intent.tool_name,
+                                    "arguments": json.dumps(intent.arguments),
+                                },
+                            }
+                        )
+                        self._log_request_event(
+                            "compat_xml_mcp_tool_gate",
+                            {
+                                "compat_mode": self._model_compat_mode,
+                                "tool_name": intent.tool_name,
+                                "server_name": intent.server_name,
+                                "allowed": True,
+                                "reason": "approved",
+                            },
+                        )
+                    else:
+                        self._log_request_event(
+                            "compat_xml_mcp_tool_gate",
+                            {
+                                "compat_mode": self._model_compat_mode,
+                                "tool_name": intent.tool_name,
+                                "server_name": intent.server_name,
+                                "allowed": False,
+                                "reason": intent.blocked_reason or intent.parse_error or "rejected",
+                            },
+                        )
+
+            else:
+                content_text, extracted_thoughts = self._extract_think_tags(content_text)
+                if extracted_thoughts:
+                    thought_blob = "\n\n".join(part for part in extracted_thoughts if part.strip())
+                    if thought_blob:
+                        reasoning_text = "\n\n".join(part for part in [reasoning_text, thought_blob] if part).strip()
+                    self._log_request_event(
+                        "compat_think_tags_detected",
+                        {
+                            "compat_mode": self._model_compat_mode or "default",
+                            "count": len(extracted_thoughts),
+                        },
+                    )
+
             if available_tool_names:
-                content_text, recovered_tool_calls = self._recover_tool_calls_from_text(
+                content_text, pseudo_recovered_tool_calls = self._recover_tool_calls_from_text(
                     content_text,
                     available_tool_names=available_tool_names,
                 )
+                if pseudo_recovered_tool_calls:
+                    recovered_tool_calls.extend(pseudo_recovered_tool_calls)
+                    self._log_request_event(
+                        "compat_pseudo_tool_recovery",
+                        {
+                            "compat_mode": self._model_compat_mode or "default",
+                            "count": len(pseudo_recovered_tool_calls),
+                        },
+                    )
             if recovered_tool_calls and self._looks_like_tool_planning_scaffold(content_text):
                 content_text = ""
 
@@ -647,11 +816,22 @@ class OpenAICompatProvider(BaseLLMProvider):
         for call in tool_calls:
             function = call.get("function") or {}
             raw_args = function.get("arguments") or "{}"
+            tool_name = str(function.get("name") or "")
+            if available_tool_names and tool_name not in available_tool_names:
+                self._log_request_event(
+                    "compat_tool_rejected",
+                    {
+                        "compat_mode": self._model_compat_mode or "default",
+                        "tool_name": tool_name,
+                        "reason": "not_in_approved_registry",
+                    },
+                )
+                continue
             blocks.append(
                 LLMContentBlock(
                     type="tool_use",
                     id=str(call.get("id") or ""),
-                    name=str(function.get("name") or ""),
+                    name=tool_name,
                     input=self._parse_tool_args(raw_args),
                 )
             )
@@ -698,7 +878,11 @@ class OpenAICompatProvider(BaseLLMProvider):
         if self._frequency_penalty is not None:
             payload["frequency_penalty"] = self._frequency_penalty
         resolved_enable_thinking = self._resolve_enable_thinking(enable_thinking)
-        if resolved_enable_thinking is not None and not self._is_direct_openai():
+        if (
+            resolved_enable_thinking is not None
+            and not self._is_direct_openai()
+            and self._supports_chat_template_thinking_kwargs()
+        ):
             extra_body = payload.setdefault("extra_body", {})
             if isinstance(extra_body, dict):
                 chat_kwargs = extra_body.setdefault("chat_template_kwargs", {})
