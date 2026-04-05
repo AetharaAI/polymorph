@@ -81,6 +81,42 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "firecrawl_scrape",
+        "description": "Scrape a URL via Firecrawl v2 and return structured page content plus scrape metadata.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Absolute URL to scrape"},
+                "max_chars": {"type": "integer", "description": "Max chars returned in text_excerpt", "default": 120000},
+                "formats": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional Firecrawl output formats, e.g. ['markdown','html']",
+                },
+                "only_main_content": {"type": "boolean", "description": "Prefer main content extraction only"},
+                "mobile": {"type": "boolean", "description": "Use mobile browser emulation"},
+                "wait_for": {"type": "integer", "description": "Optional wait time in ms before extraction"},
+                "timeout_seconds": {"type": "integer", "description": "HTTP timeout in seconds (5-300)"},
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "firecrawl_interact",
+        "description": "Interact with a previously scraped Firecrawl session using prompt or code.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scrape_id": {"type": "string", "description": "scrapeId from firecrawl_scrape response"},
+                "prompt": {"type": "string", "description": "Natural-language action request"},
+                "code": {"type": "string", "description": "Optional Playwright/agent-browser code"},
+                "language": {"type": "string", "description": "Code language when using code: node, python, bash"},
+                "timeout": {"type": "integer", "description": "Execution timeout in seconds (1-300)"},
+            },
+            "required": ["scrape_id"]
+        }
+    },
+    {
         "name": "extract_contacts",
         "description": "Extract emails and phone numbers from raw html/text or directly from a URL.",
         "input_schema": {
@@ -695,6 +731,7 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
     """Route a tool call to its implementation and return a string result."""
     from backend.agent.tools import (
         web_search,
+        firecrawl_tools,
         code_executor,
         file_ops,
         shell,
@@ -777,10 +814,52 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
                 max_results=max_results
             ))
         elif tool_name == "scrape_page":
+            use_firecrawl = str(os.getenv("FIRECRAWL_ENABLE_FOR_SCRAPE_PAGE", "true")).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            if use_firecrawl and firecrawl_tools.is_configured():
+                firecrawl_result = await _run_with_retry(
+                    lambda: firecrawl_tools.firecrawl_scrape(
+                        url=tool_input.get("url", ""),
+                        max_chars=tool_input.get("max_chars", 120000),
+                        formats=tool_input.get("formats"),
+                        only_main_content=tool_input.get("only_main_content"),
+                        mobile=tool_input.get("mobile"),
+                        wait_for=tool_input.get("wait_for"),
+                        timeout_seconds=tool_input.get("timeout_seconds"),
+                    )
+                )
+                if not str(firecrawl_result).startswith("Error"):
+                    return firecrawl_result
             return await _run_with_retry(
                 lambda: profit_ops.scrape_page(
                     url=tool_input.get("url", ""),
                     max_chars=tool_input.get("max_chars", 120000),
+                )
+            )
+        elif tool_name == "firecrawl_scrape":
+            return await _run_with_retry(
+                lambda: firecrawl_tools.firecrawl_scrape(
+                    url=tool_input.get("url", ""),
+                    max_chars=tool_input.get("max_chars", 120000),
+                    formats=tool_input.get("formats"),
+                    only_main_content=tool_input.get("only_main_content"),
+                    mobile=tool_input.get("mobile"),
+                    wait_for=tool_input.get("wait_for"),
+                    timeout_seconds=tool_input.get("timeout_seconds"),
+                )
+            )
+        elif tool_name == "firecrawl_interact":
+            return await _run_with_retry(
+                lambda: firecrawl_tools.firecrawl_interact(
+                    scrape_id=tool_input.get("scrape_id", ""),
+                    prompt=tool_input.get("prompt"),
+                    code=tool_input.get("code"),
+                    language=tool_input.get("language"),
+                    timeout=tool_input.get("timeout"),
                 )
             )
         elif tool_name == "extract_contacts":

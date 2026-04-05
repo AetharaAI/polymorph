@@ -24,6 +24,8 @@ dynamic_groups:
       - tavily_search
       - brave_search
       - scrape_page
+      - firecrawl_scrape
+      - firecrawl_interact
       - extract_contacts
   outreach:
     when_to_use: lead logging, campaigns, email workflows

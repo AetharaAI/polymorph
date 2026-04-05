@@ -13,6 +13,8 @@ tools:
   - tavily_search
   - brave_search
   - scrape_page
+  - firecrawl_scrape
+  - firecrawl_interact
 ---
 
 # Verification And Sourcing

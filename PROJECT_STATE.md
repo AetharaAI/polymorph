@@ -76,6 +76,7 @@ For full context, use the `project-state/` package.
 - Harness self-description metadata is now opt-in for the prompt path instead of being injected on every turn.
 - Tool bootstrap now uses `mini-agent/backend/TOOLS.md` plus `read_tool_schema` lazy loading instead of exposing the full execution registry schema by default.
 - Loaded dynamic tool schemas are cached in session state so the next iteration can expose them without rebroadcasting the full registry.
+- Firecrawl tools are now available as first-class dynamic tools (`firecrawl_scrape`, `firecrawl_interact`), and `scrape_page` now prefers Firecrawl automatically when `FIRECRAWL_API_KEY` is configured.
 - OpenAI-compatible output normalization now strips visible `<think>` leakage, suppresses user-visible tool-planning scaffolds, and recovers pseudo tool-call JSON into real tool calls when possible.
 - OpenAI-compatible model compatibility mode now supports a model-selectable `xml_mcp_reasoning` parser path for MiroThinker-style outputs (`<think>` + `<use_mcp_tool>` blocks) with gated tool routing through the approved tool registry.
 - Qwen3/Qwen3.5 direct-answer flows now default to `enable_thinking=false` unless a request explicitly opts into reasoning mode.

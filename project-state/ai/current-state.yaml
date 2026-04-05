@@ -46,6 +46,8 @@ runtime:
   tool_manifest_enabled: true
   tool_manifest_path: mini-agent/backend/TOOLS.md
   dynamic_tool_schema_loading_enabled: true
+  firecrawl_tools_enabled: true
+  firecrawl_scrape_page_prefers_firecrawl_when_configured: true
   openai_compat_visible_reasoning_normalization_enabled: true
   openai_compat_raw_text_streaming_deferred_until_normalization: true
   openai_compat_model_selectable_xml_mcp_reasoning_compat_enabled: true

@@ -1320,6 +1320,8 @@ async def run_agent(
                                 "tavily_search",
                                 "brave_search",
                                 "scrape_page",
+                                "firecrawl_scrape",
+                                "firecrawl_interact",
                                 "extract_contacts",
                                 "list_leads",
                                 "run_campaign",

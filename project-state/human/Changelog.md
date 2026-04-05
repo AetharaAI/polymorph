@@ -4,6 +4,8 @@
 - Scrubbed a leaked Twilio Account SID from `3-good-calls-still-need-polsh-but-good-03-16-2026-last-call-of -the-night.md` and republished `main` cleanly after GitHub push-protection blocked the previous commit.
 - Added a run-level completion gate in `mini-agent/backend/agent/runner.py` so prompts that declare explicit required artifact filenames (for example `/workspace/...`) cannot end as `done` until those artifacts are actually written via tool calls.
 - Added replay logging for missing-required-artifact gate events to make future benchmark miss cases directly diagnosable from session telemetry.
+- Added first-class Firecrawl tools (`firecrawl_scrape`, `firecrawl_interact`) in the runtime tool registry and wired `scrape_page` to prefer Firecrawl automatically when `FIRECRAWL_API_KEY` is configured.
+- Updated tool-manifest docs and verification skill metadata so Firecrawl appears in dynamic research-tool discovery via `read_tool_schema`.
 
 ## 2026-04-02
 - Added a narrow OpenAI-compatible model-compatibility adapter path for MiroThinker-style outputs via `xml_mcp_reasoning`.
