@@ -5,8 +5,10 @@ project:
   product_mode: internal_only
 runtime:
   primary_harness_path: mini-agent
-  provider_mode: unified_openai_compat_gateway_with_model_routing_and_explicit_fallback_support
-  primary_model: omnicoder
+  provider_mode: triad_zero_local_substrates_with_temporary_openrouter_openai_compat_transport
+  primary_model: grm2.6-plus
+  active_transport_provider: openrouter
+  active_transport_model: tencent/hy3:free
   internal_operator_mode: true
   fleet_operator_enabled: true
   channel_control_plane_enabled: true
@@ -23,8 +25,8 @@ runtime:
   fleet_execution_transport: ssh_over_tailscale
   fleet_destructive_actions_require_confirmation: true
   direct_openai_base_url: https://api.openai.com/v1
-  unified_gateway_base_url: https://api.aetherpro.tech/v1
-  local_fallback_model_target: qwen3.5-9b
+  unified_gateway_base_url: https://openrouter.ai/api/v1
+  local_fallback_model_target: no_local_gpu_runner_currently_available
   explicit_fallback_enabled: true
   explicit_fallback_provider: openai_compat
   effective_distinct_fallback_present: true
@@ -46,6 +48,15 @@ runtime:
   tool_manifest_enabled: true
   tool_manifest_path: mini-agent/backend/TOOLS.md
   dynamic_tool_schema_loading_enabled: true
+  visual_inspection_enabled: true
+  visual_inspection_tool: inspect_visual
+  delegated_vision_tool: inspect_image
+  visual_inspection_route_order:
+    - local_ocr_for_text_heavy_images
+    - delegated_vision_for_layout_diagram_ui_understanding
+    - delegated_vision_as_local_ocr_fallback
+  local_ocr_subprocess_isolation_enabled: true
+  transcript_final_answer_primary_output_behavior_enabled: true
   firecrawl_tools_enabled: true
   firecrawl_scrape_page_prefers_firecrawl_when_configured: true
   openai_compat_visible_reasoning_normalization_enabled: true
@@ -70,8 +81,8 @@ runtime:
   voice_mode_path: persistent_live_browser_voice_session_to_full_harness_loop_to_kokoro_realtime_tts_with_auto_resume
   voice_agent_provider: openai_compat
   voice_agent_model: qwen3.5-122
-  voice_agent_fallback_model: omnicoder
-  voice_agent_base_url: https://api.aetherpro.tech/v1
+  voice_agent_fallback_model: grm2.6-plus
+  voice_agent_base_url: https://openrouter.ai/api/v1
   voice_realtime_tts_enabled: true
   voice_realtime_tts_transport: gateway_realtime_stream
   voice_default_kokoro_voice: af_heart
@@ -97,8 +108,8 @@ voice_services:
   live_operator_verified_on: 2026-03-17
 model_runner_state:
   tracked_layout_root: model-runners/
-  l40s_90_active_voice_runner: qwen3.5-9b
-  l40s_180_active_primary_reasoning_runner: qwen3.5-122
+  l40s_90_active_voice_runner: none_currently_running
+  l40s_180_active_primary_reasoning_runner: none_currently_running
   l40s_90_known_good_runners:
     - qwen3.5-35b
     - qwen3.5-9b

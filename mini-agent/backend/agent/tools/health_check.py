@@ -89,6 +89,7 @@ async def get_harness_status() -> str:
     payload = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "provider": provider,
+        "execution_policy": shell.execution_policy_for_session("default"),
         "tool_count": len(tool_names),
         "tools": tool_names,
         "skills_registry_path": str(Path(__file__).resolve().parents[2] / "SKILLS.md"),

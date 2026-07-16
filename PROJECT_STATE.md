@@ -9,14 +9,15 @@ For full context, use the `project-state/` package.
 - Project: `AetherOps_PolyMorph_Internal`
 - Mode: internal-only harness
 - Primary app path: `mini-agent/`
-- Primary provider mode: unified OpenAI-compatible gateway with explicit fallback support
-- Primary model target: `omnicoder`
+- Primary provider mode: local Triad Zero substrates plus temporary OpenRouter OpenAI-compatible transport
+- Primary model target: logical route `grm2.6-plus`
+- Active transport model: `tencent/hy3:free`
 - Direct OpenAI base URL: `https://api.openai.com/v1` (available, not current primary path)
-- Unified gateway base URL: `https://api.aetherpro.tech/v1`
-- Local fallback model target: `qwen3.5-9b`
+- Unified gateway base URL: `https://openrouter.ai/api/v1`
+- Local fallback model target: local GPU inference currently unavailable
 - Explicit fallback: enabled with a distinct same-gateway fallback target
 - Voice lane model target: `qwen3.5-122`
-- Voice lane fallback target: `omnicoder`
+- Voice lane fallback target: `grm2.6-plus`
 - Voice lane provider mode: `openai_compat` through the unified gateway
 - Voice lane UI: separate `PolyMorph Voice Mode` pane in the frontend
 - Internal operator mode: fleet-aware control plane enabled
@@ -38,6 +39,10 @@ For full context, use the `project-state/` package.
 - `write_file` now uses canonical upload paths, atomic writes, and post-write verification.
 - Every run now injects a structured temporal context block with exact time/date and elapsed-session markers.
 - Main mic flow opens a live ASR websocket session, shows partial transcript updates, and inserts the final transcript into the composer before send.
+- Transcript rendering now treats the final assistant response as the primary output:
+  - completed tool/thinking cards auto-collapse by default
+  - final responses auto-scroll into view and stream through the markdown renderer
+  - user manual scroll intent pauses forced follow behavior until they return to the final-response region
 - Voice mode now runs as a persistent live voice session:
   - ASR stream starts from the browser
   - finalized or idle-committed speech turns auto-dispatch into `/api/voice/turn`
@@ -64,7 +69,9 @@ For full context, use the `project-state/` package.
 - Syndicate is the first platform-specific autonomy target after the adapter layer; future autonomy work should bias toward a Polymorph-native Syndicate adapter/tool surface instead of generic benchmark polish.
 - Model/provider env rationalization and internal profile switching are deferred follow-on work and should not be mixed into the first channel pass.
 - Provider envs now load in canonical order (`.env` -> `backend/.env` -> `.env.polymorph`) instead of depending on current working directory.
-- OpenAI-compatible internal traffic now targets one unified gateway: `https://api.aetherpro.tech/v1`.
+- OpenAI-compatible transport currently targets OpenRouter: `https://openrouter.ai/api/v1`.
+- Local Triad Zero service discovery now uses the workstation-local substrate first for MongoDB, PostgreSQL, Redis, NATS, RedWatch, and CollabFabric.
+- A local Qdrant fallback is provided from the Polymorph compose stack because Triad Zero did not expose a running Qdrant service at audit time.
 - Multiple client-facing LiteLLM gateway assumptions are being removed; remote nodes are worker backends behind the unified gateway.
 - Explicit fallback now suppresses implicit LiteLLM fallback injection unless `AGENT_ENABLE_IMPLICIT_LITELLM_FALLBACKS=true` is set.
 - The current provider chain should be interpreted as: one primary target plus one explicit fallback target by default.
@@ -76,6 +83,15 @@ For full context, use the `project-state/` package.
 - Harness self-description metadata is now opt-in for the prompt path instead of being injected on every turn.
 - Tool bootstrap now uses `mini-agent/backend/TOOLS.md` plus `read_tool_schema` lazy loading instead of exposing the full execution registry schema by default.
 - Loaded dynamic tool schemas are cached in session state so the next iteration can expose them without rebroadcasting the full registry.
+- A visual inspection lane now exists for uploaded images:
+  - tool surface: `inspect_visual` for auto-routing and `inspect_image` for delegated-VLM-only use
+  - route order: local OCR first for text-heavy screenshots/documents, delegated vision for layout/diagram/UI interpretation or OCR fallback
+  - local OCR is isolated in a subprocess because direct in-process Paddle runtime is not stable on this workstation
+- Vision provider state now exposes truthful runtime badges and routing metadata:
+  - `VISION: LOCAL OCR`
+  - `VISION: DELEGATED`
+  - `VISION: NATIVE`
+  - `VISION: UNAVAILABLE`
 - Firecrawl tools are now available as first-class dynamic tools (`firecrawl_scrape`, `firecrawl_interact`), and `scrape_page` now prefers Firecrawl automatically when `FIRECRAWL_API_KEY` is configured.
 - OpenAI-compatible output normalization now strips visible `<think>` leakage, suppresses user-visible tool-planning scaffolds, and recovers pseudo tool-call JSON into real tool calls when possible.
 - OpenAI-compatible model compatibility mode now supports a model-selectable `xml_mcp_reasoning` parser path for MiroThinker-style outputs (`<think>` + `<use_mcp_tool>` blocks) with gated tool routing through the approved tool registry.

@@ -560,6 +560,8 @@ export interface ConnectionField {
   display_value: string;
   has_value: boolean;
   source: string;
+  field_type?: 'text' | 'boolean' | 'select' | string;
+  options?: string[] | null;
 }
 
 export interface ConnectionService {

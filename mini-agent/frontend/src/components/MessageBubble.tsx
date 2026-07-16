@@ -1,18 +1,20 @@
 'use client';
 
 import { Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { Ref, useMemo, useState } from 'react';
 import { Message } from '@/lib/types';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolCallCard } from './ToolCallCard';
 import { ToolCall } from '@/lib/types';
+import { MarkdownMessage } from './MarkdownMessage';
 
 interface MessageBubbleProps {
   message: Message;
   toolCalls: ToolCall[];
+  finalResponseAnchorRef?: Ref<HTMLDivElement>;
 }
 
-export function MessageBubble({ message, toolCalls }: MessageBubbleProps) {
+export function MessageBubble({ message, toolCalls, finalResponseAnchorRef }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
 
   const isUser = message.role === 'user';
@@ -27,17 +29,15 @@ export function MessageBubble({ message, toolCalls }: MessageBubbleProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Get thinking content
-  const thinkingContent = message.content.find(c => c.type === 'thinking');
-  // Get text content
   const textContents = message.content.filter(c => c.type === 'text');
-  // Get tool use content
-  const toolUseContents = message.content.filter(c => c.type === 'tool_use');
-  // Get tool result content
-  const toolResultContents = message.content.filter(c => c.type === 'tool_result');
-  // Get selected skills
   const skillContents = message.content.filter(c => c.type === 'skill');
-  const audioContents = message.content.filter(c => c.type === 'input_audio' || c.type === 'audio_url');
+  const toolUseIds = useMemo(
+    () => new Set(message.content.filter(c => c.type === 'tool_use' && c.tool_id).map(c => c.tool_id as string)),
+    [message.content]
+  );
+  const firstTextIndex = message.content.findIndex(
+    c => c.type === 'text' && typeof c.text === 'string' && c.text.trim().length > 0
+  );
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -62,61 +62,84 @@ export function MessageBubble({ message, toolCalls }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Thinking block */}
-        {thinkingContent && !isUser && (
-          <ThinkingBlock text={thinkingContent.thinking || ''} />
-        )}
+        {message.content.map((content, i) => {
+          if (content.type === 'skill') {
+            return null;
+          }
 
-        {/* Text content */}
-        {textContents.map((content, i) => (
-          <div key={i} className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-            {content.text}
-          </div>
-        ))}
+          if (content.type === 'thinking' && !isUser) {
+            return <ThinkingBlock key={`thinking-${i}`} text={content.thinking || ''} />;
+          }
 
-        {audioContents.length > 0 && (
-          <div className={`mt-2 text-xs rounded border px-2 py-1 ${
-            isUser
-              ? 'border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground/80'
-              : 'border-border bg-secondary text-muted-foreground'
-          }`}>
-            Voice input attached
-          </div>
-        )}
+          if (content.type === 'text') {
+            const text = content.text || '';
+            if (!text) return null;
+            const anchorRef = !isUser && i === firstTextIndex ? finalResponseAnchorRef : undefined;
+            return (
+              <div
+                key={`text-${i}`}
+                ref={anchorRef}
+                className={isUser ? 'text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'text-sm break-words [overflow-wrap:anywhere]'}
+              >
+                {isUser ? text : <MarkdownMessage content={text} />}
+              </div>
+            );
+          }
 
-        {/* Tool calls */}
-        {!isUser && toolUseContents.map((toolUse, i) => {
-          const toolCall = toolCalls.find(tc => tc.tool_id === toolUse.tool_id);
-          return (
-            <ToolCallCard
-              key={toolUse.tool_id || i}
-              toolCall={toolCall || {
-                tool_name: toolUse.tool_name || '',
-                tool_id: toolUse.tool_id || '',
-                input: toolUse.input || {},
-                status: 'completed',
-                result: toolResultContents.find(tr => tr.tool_id === toolUse.tool_id)?.result
-              }}
-            />
-          );
-        })}
+          if (content.type === 'input_audio' || content.type === 'audio_url') {
+            return (
+              <div
+                key={`${content.type}-${i}`}
+                className={`mt-2 text-xs rounded border px-2 py-1 ${
+                  isUser
+                    ? 'border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground/80'
+                    : 'border-border bg-secondary text-muted-foreground'
+                }`}
+              >
+                Voice input attached
+              </div>
+            );
+          }
 
-        {/* Tool results in message */}
-        {!isUser && toolResultContents.map((tr, i) => {
-          const alreadyShown = toolCalls.some(tc => tc.tool_id === tr.tool_id);
-          if (alreadyShown) return null;
-          return (
-            <ToolCallCard
-              key={tr.tool_id || i}
-              toolCall={{
-                tool_name: 'result',
-                tool_id: tr.tool_id || '',
-                input: {},
-                status: 'completed',
-                result: tr.result
-              }}
-            />
-          );
+          if (content.type === 'tool_use' && !isUser) {
+            const toolCall = toolCalls.find(tc => tc.tool_id === content.tool_id);
+            const fallbackResult = message.content.find(
+              block => block.type === 'tool_result' && block.tool_id === content.tool_id
+            )?.result;
+
+            return (
+              <ToolCallCard
+                key={content.tool_id || `tool-use-${i}`}
+                toolCall={toolCall || {
+                  tool_name: content.tool_name || '',
+                  tool_id: content.tool_id || '',
+                  input: content.input || {},
+                  status: 'completed',
+                  result: fallbackResult
+                }}
+              />
+            );
+          }
+
+          if (content.type === 'tool_result' && !isUser) {
+            if (content.tool_id && toolUseIds.has(content.tool_id)) {
+              return null;
+            }
+            return (
+              <ToolCallCard
+                key={content.tool_id || `tool-result-${i}`}
+                toolCall={{
+                  tool_name: 'result',
+                  tool_id: content.tool_id || '',
+                  input: {},
+                  status: 'completed',
+                  result: content.result
+                }}
+              />
+            );
+          }
+
+          return null;
         })}
 
         {/* Timestamp and copy button */}

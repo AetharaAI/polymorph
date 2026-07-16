@@ -13,7 +13,8 @@ export function useFiles(sessionId: string) {
       const attachment: FileAttachment = {
         file_id: response.file_id,
         filename: response.filename,
-        size: response.size
+        size: response.size,
+        content_type: response.content_type,
       };
       setFiles(prev => [...prev, attachment]);
       return attachment;
@@ -32,7 +33,8 @@ export function useFiles(sessionId: string) {
       setFiles(fileList.map(f => ({
         file_id: f.file_id,
         filename: f.filename,
-        size: f.size
+        size: f.size,
+        content_type: f.content_type,
       })));
     } catch (e) {
       console.error('Failed to load files:', e);

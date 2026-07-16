@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Message, ToolCall } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
 import { Loader2, Search, FileCode, FileText, Calculator } from 'lucide-react';
@@ -20,12 +20,119 @@ const suggestedPrompts = [
 
 export function ChatWindow({ messages, toolCalls, isLoading }: ChatWindowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const finalResponseRef = useRef<HTMLDivElement>(null);
+  const autoFollowModeRef = useRef<'bottom' | 'final' | 'off'>('bottom');
+  const suppressScrollHandlerRef = useRef(false);
+  const previousAssistantMessageIdRef = useRef<string | null>(null);
+  const previousAssistantHadTextRef = useRef(false);
+
+  const activeAssistantMessage = useMemo(() => {
+    const lastMessage = messages[messages.length - 1];
+    return lastMessage?.role === 'assistant' ? lastMessage : null;
+  }, [messages]);
+
+  const finalResponseStarted = Boolean(
+    activeAssistantMessage?.content.some(
+      content => content.type === 'text' && typeof content.text === 'string' && content.text.trim().length > 0
+    )
+  );
+
+  const isNearBottom = useCallback((container: HTMLDivElement) => {
+    return container.scrollHeight - (container.scrollTop + container.clientHeight) <= 80;
+  }, []);
+
+  const isNearFinalRegion = useCallback((container: HTMLDivElement, anchor: HTMLDivElement | null) => {
+    if (!anchor) return false;
+    const containerRect = container.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    return (
+      anchorRect.top <= containerRect.top + 120 &&
+      anchorRect.bottom >= containerRect.top - 120
+    );
+  }, []);
+
+  const scrollToTopPosition = useCallback((top: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    suppressScrollHandlerRef.current = true;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    window.requestAnimationFrame(() => {
+      suppressScrollHandlerRef.current = false;
+    });
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    scrollToTopPosition(container.scrollHeight);
+  }, [scrollToTopPosition]);
+
+  const scrollToFinalResponse = useCallback(() => {
+    const container = containerRef.current;
+    const anchor = finalResponseRef.current;
+    if (!container || !anchor) return;
+    const containerRect = container.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    const nextTop = container.scrollTop + (anchorRect.top - containerRect.top) - 12;
+    scrollToTopPosition(nextTop);
+  }, [scrollToTopPosition]);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onScroll = () => {
+      if (suppressScrollHandlerRef.current) {
+        return;
+      }
+
+      const nearBottom = isNearBottom(container);
+      const nearFinal = isNearFinalRegion(container, finalResponseRef.current);
+
+      if (nearBottom || nearFinal) {
+        autoFollowModeRef.current = finalResponseStarted ? 'final' : 'bottom';
+        return;
+      }
+
+      autoFollowModeRef.current = 'off';
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+    };
+  }, [finalResponseStarted, isNearBottom, isNearFinalRegion]);
+
+  useEffect(() => {
+    const currentAssistantId = activeAssistantMessage?.id || null;
+    const isNewAssistantMessage = currentAssistantId !== previousAssistantMessageIdRef.current;
+
+    if (isNewAssistantMessage) {
+      previousAssistantMessageIdRef.current = currentAssistantId;
+      previousAssistantHadTextRef.current = false;
+      autoFollowModeRef.current = 'bottom';
     }
-  }, [messages, isLoading]);
+
+    if (finalResponseStarted && !previousAssistantHadTextRef.current) {
+      autoFollowModeRef.current = 'final';
+      previousAssistantHadTextRef.current = true;
+      window.requestAnimationFrame(scrollToFinalResponse);
+      return;
+    }
+
+    if (finalResponseStarted) {
+      previousAssistantHadTextRef.current = true;
+      if (autoFollowModeRef.current === 'final') {
+        window.requestAnimationFrame(scrollToFinalResponse);
+      }
+      return;
+    }
+
+    previousAssistantHadTextRef.current = false;
+    if (autoFollowModeRef.current === 'bottom') {
+      window.requestAnimationFrame(scrollToBottom);
+    }
+  }, [activeAssistantMessage?.id, finalResponseStarted, messages, isLoading, scrollToBottom, scrollToFinalResponse]);
 
   if (messages.length === 0 && !isLoading) {
     return (
@@ -65,6 +172,7 @@ export function ChatWindow({ messages, toolCalls, isLoading }: ChatWindowProps) 
           key={message.id}
           message={message}
           toolCalls={toolCalls}
+          finalResponseAnchorRef={message.id === activeAssistantMessage?.id && finalResponseStarted ? finalResponseRef : undefined}
         />
       ))}
 

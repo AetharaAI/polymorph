@@ -103,6 +103,21 @@ export interface ProviderHealth {
   provider: string;
   model: string;
   detail: string;
+  vision?: {
+    route: 'native' | 'delegated' | 'local_ocr' | 'unavailable' | string;
+    routing_mode?: string;
+    configured?: boolean;
+    local_ocr?: {
+      enabled?: boolean;
+      configured?: boolean;
+      engine?: string;
+    };
+    model?: string | null;
+    provider?: string | null;
+    verify_model?: string | null;
+    verify_provider?: string | null;
+    auto_inspect_enabled?: boolean;
+  };
 }
 
 export interface AsrServiceHealth {
@@ -143,6 +158,17 @@ export interface DiagnosticsResponse {
   provider?: ProviderHealth | null;
   services?: {
     asr?: AsrServiceHealth;
+    tts?: {
+      enabled: boolean;
+      configured: boolean;
+      base_url: string;
+      model: string;
+      has_api_key: boolean;
+      status: string;
+      checked_at: string;
+      http_status?: number;
+      error?: string;
+    };
   };
 }
 
@@ -155,6 +181,8 @@ export interface ConnectionField {
   display_value: string;
   has_value: boolean;
   source: 'override' | 'env' | 'default' | string;
+  field_type?: 'text' | 'boolean' | 'select' | string;
+  options?: string[] | null;
 }
 
 export interface ConnectionService {

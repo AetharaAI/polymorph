@@ -275,6 +275,7 @@ async def list_files(session_id: str) -> str:
                 "filename": original_name,
                 "size": file_path.stat().st_size,
                 "path": str(file_path),
+                "content_type": file_path.suffix.lower()[1:] if file_path.suffix else "binary",
             }
         )
 
@@ -282,6 +283,21 @@ async def list_files(session_id: str) -> str:
         return json.dumps([], indent=2)
 
     return json.dumps(files, indent=2)
+
+
+def is_image_file(file_id: str) -> bool:
+    file_path = _find_file_path(file_id)
+    if not file_path:
+        return False
+    return file_path.suffix.lower() in IMAGE_EXTENSIONS
+
+
+def display_name(file_id: str) -> str:
+    file_path = _find_file_path(file_id)
+    if not file_path:
+        return file_id
+    parts = file_path.name.split("_", 1)
+    return parts[1] if len(parts) > 1 else file_path.name
 
 
 async def write_file(

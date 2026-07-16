@@ -114,9 +114,18 @@ SERVICE_SPECS: dict[str, dict[str, Any]] = {
         "description": "Plan-before-build controls and approval mode for autonomous project generation.",
         "requires_restart": False,
         "fields": [
-            {"env_key": "AGENT_REQUIRE_PLAN_FOR_PROJECTS", "label": "Require Plan (true/false)", "secret": False, "required": False},
-            {"env_key": "AGENT_PLAN_APPROVAL_MODE", "label": "Approval Mode (manual/auto)", "secret": False, "required": False},
-            {"env_key": "AGENT_SHELL_PROFILE", "label": "Shell Profile (strict/project/project_full)", "secret": False, "required": False},
+            {"env_key": "AGENT_REQUIRE_PLAN_FOR_PROJECTS", "label": "Require Plan", "secret": False, "required": False, "field_type": "boolean"},
+            {"env_key": "AGENT_PLAN_APPROVAL_MODE", "label": "Approval Mode", "secret": False, "required": False, "field_type": "select", "options": ["manual", "auto"]},
+        ],
+    },
+    "execution_policy": {
+        "name": "Execution Boundaries",
+        "description": "Operator controls for shell behavior, HTTP egress, and whether the agent may touch paths outside its session workspace.",
+        "requires_restart": False,
+        "fields": [
+            {"env_key": "AGENT_SHELL_PROFILE", "label": "Shell Profile", "secret": False, "required": False, "field_type": "select", "options": ["strict", "project", "project_full"]},
+            {"env_key": "AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS", "label": "Allow Outside Workspace Access", "secret": False, "required": False, "field_type": "boolean"},
+            {"env_key": "AGENT_ALLOW_HTTP_EGRESS", "label": "Allow HTTP Egress", "secret": False, "required": False, "field_type": "boolean"},
         ],
     },
     "channels_runtime": {
@@ -365,10 +374,20 @@ async def _test_governance(values: dict[str, str], timeout_seconds: float) -> tu
     _ = timeout_seconds
     require_plan = values.get("AGENT_REQUIRE_PLAN_FOR_PROJECTS", "true").strip().lower()
     approval_mode = values.get("AGENT_PLAN_APPROVAL_MODE", "manual").strip().lower()
-    shell_profile = values.get("AGENT_SHELL_PROFILE", "strict").strip().lower()
     return (
         "healthy",
-        f"require_plan={require_plan or 'true'} approval_mode={approval_mode or 'manual'} shell_profile={shell_profile or 'strict'}",
+        f"require_plan={require_plan or 'true'} approval_mode={approval_mode or 'manual'}",
+    )
+
+
+async def _test_execution_policy(values: dict[str, str], timeout_seconds: float) -> tuple[str, str]:
+    _ = timeout_seconds
+    shell_profile = values.get("AGENT_SHELL_PROFILE", "strict").strip().lower() or "strict"
+    outside_workspace = _env_flag(values.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"), default=shell_profile == "project_full")
+    http_egress = _env_flag(values.get("AGENT_ALLOW_HTTP_EGRESS"), default=True)
+    return (
+        "healthy",
+        f"shell_profile={shell_profile} outside_workspace_access={outside_workspace} http_egress={http_egress}",
     )
 
 
@@ -409,6 +428,7 @@ TESTERS = {
     "postgres": _test_postgres,
     "qdrant": _test_qdrant,
     "governance": _test_governance,
+    "execution_policy": _test_execution_policy,
     "channels_runtime": _test_channels_runtime,
     "telegram_channel": _test_telegram_channel,
 }
@@ -439,6 +459,8 @@ async def get_connections(request: Request):
                     "display_value": _mask_secret(value) if secret else value,
                     "has_value": bool(value),
                     "source": source,
+                    "field_type": str(field.get("field_type") or "text"),
+                    "options": field.get("options") if isinstance(field.get("options"), list) else None,
                 }
             )
 
@@ -460,6 +482,16 @@ async def get_connections(request: Request):
             details = (
                 f"default_route={runtime.get('default_route')} "
                 f"session_namespace={runtime.get('session_namespace')}"
+            )
+        elif service_id == "execution_policy":
+            shell_profile = effective.get("AGENT_SHELL_PROFILE", "strict").strip() or "strict"
+            outside_workspace = _env_flag(effective.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"), default=shell_profile == "project_full")
+            http_egress = _env_flag(effective.get("AGENT_ALLOW_HTTP_EGRESS"), default=True)
+            status = "healthy"
+            details = (
+                f"shell_profile={shell_profile} "
+                f"outside_workspace_access={outside_workspace} "
+                f"http_egress={http_egress}"
             )
         elif service_id == "telegram_channel":
             enabled = _env_flag(effective.get("CHANNELS_TELEGRAM_ENABLED"), default=False)

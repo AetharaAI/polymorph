@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, FileCode, FileText, Terminal, Calculator, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, FileCode, FileText, Terminal, Calculator, Loader2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 import { ToolCall } from '@/lib/types';
 
 const toolIcons: Record<string, React.ReactNode> = {
@@ -33,7 +33,37 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(toolCall.status === 'loading');
+  const [copied, setCopied] = useState(false);
+  const previousStatusRef = useRef(toolCall.status);
+
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    if (toolCall.status === 'loading') {
+      setIsExpanded(true);
+    } else if (previousStatus === 'loading') {
+      setIsExpanded(false);
+    }
+    previousStatusRef.current = toolCall.status;
+  }, [toolCall.status]);
+
+  const resultPreview = useMemo(() => {
+    const preview = (toolCall.result || '').replace(/\s+/g, ' ').trim();
+    return preview.length > 140 ? `${preview.slice(0, 140)}...` : preview;
+  }, [toolCall.result]);
+
+  const handleCopy = async () => {
+    const payload = {
+      tool_name: toolCall.tool_name,
+      tool_id: toolCall.tool_id,
+      status: toolCall.status,
+      input: toolCall.input,
+      result: toolCall.result,
+    };
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="border border-accent/30 bg-accent/5 rounded-lg my-2 overflow-hidden animate-slide-in max-w-full min-w-0">
@@ -42,15 +72,30 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         <span className="text-accent font-medium text-sm min-w-0 truncate">
           {toolLabels[toolCall.tool_name] || toolCall.tool_name}
         </span>
-        {toolCall.status === 'loading' && (
-          <Loader2 size={14} className="animate-spin text-accent ml-auto" />
-        )}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {toolCall.status === 'loading' && (
+            <Loader2 size={14} className="animate-spin text-accent" />
+          )}
+          {toolCall.status !== 'loading' && (
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {toolCall.status}
+            </span>
+          )}
+          <button
+            onClick={() => void handleCopy()}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="Copy tool call"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title={isExpanded ? 'Collapse tool call' : 'Expand tool call'}
+          >
+            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
       </div>
 
       {isExpanded && (
@@ -71,6 +116,12 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             </div>
           )}
         </>
+      )}
+
+      {!isExpanded && (
+        <div className="px-3 py-2 text-xs text-muted-foreground">
+          {resultPreview || 'Completed without visible result payload.'}
+        </div>
       )}
     </div>
   );

@@ -23,6 +23,13 @@ MAX_OUTPUT_CHARS = int(os.getenv("PROJECT_RUNNER_MAX_OUTPUT_CHARS", "8000"))
 MAX_LOG_LINES = int(os.getenv("PROJECT_RUNNER_MAX_LOG_LINES", "2000"))
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _trim(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     if len(text) <= max_chars:
         return text
@@ -34,10 +41,18 @@ def _safe_cwd(session_id: str, cwd: str | None) -> Path:
     if not cwd or cwd.strip() in {".", ""}:
         return workspace
 
-    candidate = (workspace / cwd).resolve()
+    raw_cwd = cwd.strip()
+    allow_outside_workspace = _env_flag("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS", False)
+    if raw_cwd.startswith("/"):
+        if not allow_outside_workspace:
+            raise ValueError("cwd escapes session workspace")
+        return Path(raw_cwd).resolve()
+
+    candidate = (workspace / raw_cwd).resolve()
     workspace_resolved = workspace.resolve()
     if workspace_resolved not in candidate.parents and candidate != workspace_resolved:
-        raise ValueError("cwd escapes session workspace")
+        if not allow_outside_workspace:
+            raise ValueError("cwd escapes session workspace")
     candidate.mkdir(parents=True, exist_ok=True)
     return candidate
 
@@ -172,6 +187,18 @@ async def http_check(
         return f"Error: Unsupported method '{method_upper}'"
     if not (url or "").strip().startswith(("http://", "https://")):
         return "Error: http_check requires absolute http(s) URL"
+    if not _env_flag("AGENT_ALLOW_HTTP_EGRESS", True):
+        return json.dumps(
+            {
+                "ok": False,
+                "kind": "http_check",
+                "url": url.strip(),
+                "method": method_upper,
+                "error": "HTTP/network egress is disabled by execution policy.",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
 
     started = time.time()
     try:

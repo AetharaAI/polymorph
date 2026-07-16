@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-16
+- Fixed the transcript UX so completed tool and thinking cards collapse by default after finishing, while active tool calls remain expanded and manually reopenable.
+- Changed final-response viewport behavior so the transcript scrolls to the beginning of the assistant's final answer, follows that answer while it streams, and stops forcing scroll when the user manually moves away.
+- Switched final assistant rendering onto the markdown path so headings, lists, tables, fenced code blocks, and links render as markdown instead of plain text.
+- Added a dedicated visual inspection lane with `inspect_visual` auto-routing between local OCR and delegated vision, plus `inspect_image` as a delegated-VLM-only compatibility tool.
+- Wired truthful frontend vision badges and attachment metadata so the harness can surface `VISION: LOCAL OCR`, `VISION: DELEGATED`, `VISION: NATIVE`, or `VISION: UNAVAILABLE`.
+- Added local OCR configuration scaffolding for the workstation's existing Paddle/GLM OCR assets, with subprocess isolation to contain the current unstable in-process Paddle runtime on this machine.
+
 ## 2026-04-05
 - Scrubbed a leaked Twilio Account SID from `3-good-calls-still-need-polsh-but-good-03-16-2026-last-call-of -the-night.md` and republished `main` cleanly after GitHub push-protection blocked the previous commit.
 - Added a run-level completion gate in `mini-agent/backend/agent/runner.py` so prompts that declare explicit required artifact filenames (for example `/workspace/...`) cannot end as `done` until those artifacts are actually written via tool calls.

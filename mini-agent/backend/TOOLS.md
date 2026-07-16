@@ -10,6 +10,8 @@ loading_instruction: |
 core_tools:
   - get_harness_status
   - read_tool_schema
+  - inspect_visual
+  - inspect_image
   - read_file
   - list_files
   - write_file
@@ -79,6 +81,7 @@ The execution registry in code remains the runtime source of truth. This markdow
 The model should always have a very small recovery-capable base set:
 
 - inspect the harness
+- inspect uploaded images through local OCR first and delegated vision when needed
 - inspect session files
 - write artifacts
 - run Python

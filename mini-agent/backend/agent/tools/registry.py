@@ -210,6 +210,35 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "inspect_visual",
+        "description": "Inspect an uploaded image with automatic routing between local OCR and delegated vision.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artifact_ref": {"type": "string", "description": "attachment://<file_id> reference for an uploaded image"},
+                "file_id": {"type": "string", "description": "Uploaded image file ID"},
+                "question": {"type": "string", "description": "What to inspect in the image"},
+                "mode": {"type": "string", "description": "auto, local_ocr, or vlm", "default": "auto"},
+                "output_format": {"type": "string", "description": "structured or text", "default": "structured"},
+                "verify_with_fusion": {"type": "boolean", "description": "Optionally run a second verifier model if configured", "default": False}
+            }
+        }
+    },
+    {
+        "name": "inspect_image",
+        "description": "Inspect an uploaded image through the delegated vision lane only and return structured visual observations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artifact_ref": {"type": "string", "description": "attachment://<file_id> reference for an uploaded image"},
+                "file_id": {"type": "string", "description": "Uploaded image file ID"},
+                "question": {"type": "string", "description": "What to inspect in the image"},
+                "output_format": {"type": "string", "description": "structured or text", "default": "structured"},
+                "verify_with_fusion": {"type": "boolean", "description": "Optionally run a second verifier model if configured", "default": False}
+            }
+        }
+    },
+    {
         "name": "read_file",
         "description": "Read the contents of an uploaded file by its file_id or filename.",
         "input_schema": {
@@ -245,7 +274,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "run_shell",
-        "description": "Run a shell command inside the session workspace. Command profile is controlled by AGENT_SHELL_PROFILE: strict, project, or project_full. curl is GET-only in all profiles.",
+        "description": "Run one shell command from the session workspace. In strict/project profiles this tool does not allow chaining, pipes, redirection, or inline cd. Absolute paths and HTTP egress are subject to execution policy.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -256,7 +285,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "run_project_command",
-        "description": "Run a project command in the persistent session workspace and return structured stdout/stderr/exit code.",
+        "description": "Run a project command and return structured stdout/stderr/exit code. `cwd` is workspace-relative unless execution policy explicitly allows broader container access.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -281,7 +310,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "http_check",
-        "description": "Issue HTTP request and return status/body preview for service smoke checks.",
+        "description": "Issue HTTP request and return status/body preview for service smoke checks. Obeys execution-policy HTTP egress controls.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -589,7 +618,9 @@ def _normalize_write_file_input(raw_input: dict) -> tuple[str | None, str | None
         try:
             parsed = json.loads(raw_args)
             if isinstance(parsed, dict):
-                merged = {**parsed, **merged}
+                # Only override if parsed actually has useful keys.
+                if parsed:
+                    merged = {**parsed, **merged}
         except Exception:
             pass
 
@@ -623,15 +654,34 @@ def _normalize_write_file_input(raw_input: dict) -> tuple[str | None, str | None
         content = content
 
     if not filename or content is None:
-        available_keys = sorted(k for k in merged.keys() if not str(k).startswith("_"))
+        # Always report the actual keys from the original input, not just merged.
+        # This fixes the bug where _raw_arguments parsing failures hid the real keys.
+        all_keys = sorted(k for k in raw_input.keys() if not str(k).startswith("_"))
+        if not all_keys:
+            all_keys = sorted(k for k in merged.keys() if not str(k).startswith("_"))
         return (
             None,
             None,
             None,
             (
                 "Error: write_file requires both 'filename' and 'content'. "
-                f"Received keys: {available_keys}. "
+                f"Received keys: {all_keys}. "
                 "Example: {\"filename\":\"report.md\",\"content\":\"...\"}"
+            ),
+        )
+
+    # Size limit check — error loudly instead of silently truncating.
+    max_bytes = int(os.getenv("WRITE_FILE_MAX_BYTES", str(200 * 1024)))  # 200 KB default
+    content_bytes = len(content.encode("utf-8")) if isinstance(content, str) else len(content)
+    if content_bytes > max_bytes:
+        return (
+            None,
+            None,
+            None,
+            (
+                f"Error: write_file content too large ({content_bytes} bytes > {max_bytes} byte limit). "
+                f"Use execute_python to write large files directly via Python file I/O. "
+                f"Example: {{\"code\": \"with open('large_file.md','w') as f: f.write(content)\"}}"
             ),
         )
 
@@ -734,6 +784,7 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
         firecrawl_tools,
         code_executor,
         file_ops,
+        vision_ops,
         shell,
         calculator,
         summarizer,
@@ -867,6 +918,27 @@ async def dispatch_tool(tool_name: str, tool_input: dict, session_id: str) -> st
                 lambda: profit_ops.extract_contacts(
                     html=tool_input.get("html"),
                     url=tool_input.get("url"),
+                )
+            )
+        elif tool_name == "inspect_image":
+            return await _run_with_retry(
+                lambda: vision_ops.inspect_image(
+                    artifact_ref=tool_input.get("artifact_ref"),
+                    file_id=tool_input.get("file_id"),
+                    question=tool_input.get("question"),
+                    output_format=str(tool_input.get("output_format", "structured") or "structured"),
+                    verify_with_fusion=bool(tool_input.get("verify_with_fusion", False)),
+                )
+            )
+        elif tool_name == "inspect_visual":
+            return await _run_with_retry(
+                lambda: vision_ops.inspect_visual(
+                    artifact_ref=tool_input.get("artifact_ref"),
+                    file_id=tool_input.get("file_id"),
+                    question=tool_input.get("question"),
+                    mode=str(tool_input.get("mode", "auto") or "auto"),
+                    output_format=str(tool_input.get("output_format", "structured") or "structured"),
+                    verify_with_fusion=bool(tool_input.get("verify_with_fusion", False)),
                 )
             )
         elif tool_name == "send_email":

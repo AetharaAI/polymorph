@@ -34,6 +34,10 @@ function statusClass(status: string): string {
   }
 }
 
+function normalizeBooleanString(value: string | undefined): boolean {
+  return String(value || '').trim().toLowerCase() === 'true';
+}
+
 export function ConnectionsPanel({ isOpen, onClose }: ConnectionsPanelProps) {
   const [services, setServices] = useState<ConnectionService[]>([]);
   const [secretsStatus, setSecretsStatus] = useState<ConnectionsResponse['secrets'] | null>(null);
@@ -196,13 +200,38 @@ export function ConnectionsPanel({ isOpen, onClose }: ConnectionsPanelProps) {
                           <span>{field.label}</span>
                           <span className="uppercase">{field.source}</span>
                         </div>
-                        <input
-                          type={field.secret ? 'password' : 'text'}
-                          value={inputValue}
-                          placeholder={placeholder}
-                          onChange={e => onChange(service.service_id, field.env_key, e.target.value)}
-                          className="w-full h-9 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
+                        {field.field_type === 'boolean' ? (
+                          <button
+                            type="button"
+                            onClick={() => onChange(service.service_id, field.env_key, normalizeBooleanString(inputValue) ? 'false' : 'true')}
+                            className={`w-full h-9 rounded border px-2 text-xs text-left transition-colors ${
+                              normalizeBooleanString(inputValue)
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                                : 'border-border bg-background text-muted-foreground'
+                            }`}
+                          >
+                            {normalizeBooleanString(inputValue) ? 'Enabled' : 'Disabled'}
+                          </button>
+                        ) : field.field_type === 'select' && field.options?.length ? (
+                          <select
+                            value={inputValue}
+                            onChange={e => onChange(service.service_id, field.env_key, e.target.value)}
+                            className="w-full h-9 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="">default</option>
+                            {field.options.map(option => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={field.secret ? 'password' : 'text'}
+                            value={inputValue}
+                            placeholder={placeholder}
+                            onChange={e => onChange(service.service_id, field.env_key, e.target.value)}
+                            className="w-full h-9 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        )}
                         <div className="text-[10px] text-muted-foreground">{field.env_key}</div>
                       </label>
                     );

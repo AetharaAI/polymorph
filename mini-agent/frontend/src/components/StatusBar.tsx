@@ -61,6 +61,27 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
       ? 'text-muted-foreground'
       : 'text-amber-400';
   const loadAvg = useMemo(() => diagnostics?.system.load_average || null, [diagnostics]);
+  const vision = providerHealth?.vision || null;
+  const visionRoute = vision?.route || 'unavailable';
+  const visionClass =
+    visionRoute === 'native'
+      ? 'text-emerald-400'
+      : visionRoute === 'local_ocr'
+        ? 'text-cyan-300'
+        : visionRoute === 'delegated'
+        ? 'text-sky-300'
+        : 'text-muted-foreground';
+  const visionLabel =
+    visionRoute === 'native'
+      ? 'VISION: NATIVE'
+      : visionRoute === 'local_ocr'
+        ? 'VISION: LOCAL OCR'
+        : visionRoute === 'delegated'
+        ? 'VISION: DELEGATED'
+        : 'VISION: UNAVAILABLE';
+  const visionModel = visionRoute === 'local_ocr'
+    ? (vision?.local_ocr?.engine || null)
+    : (vision?.model || null);
 
   return (
     <div className="border-t border-border bg-secondary">
@@ -133,6 +154,9 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
             </span>
           )}
           <span className={asrClass}>ASR {asrStatus}</span>
+          <span className={visionClass} title={visionModel || visionLabel}>
+            {visionLabel}{visionModel ? ` ${visionModel}` : ''}
+          </span>
         </div>
 
         {usage && (

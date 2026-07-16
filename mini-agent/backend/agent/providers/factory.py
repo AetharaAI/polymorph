@@ -196,6 +196,79 @@ def get_multimodal_audio_provider() -> BaseLLMProvider | None:
     )
 
 
+def get_vision_provider() -> BaseLLMProvider | None:
+    provider_name = _norm(os.getenv("VISION_PROVIDER")) or "openai_compat"
+    base_url = _norm(os.getenv("VISION_BASE_URL")) or resolve_unified_gateway_base()
+    api_key = _norm(os.getenv("VISION_API_KEY")) or resolve_openai_compat_api_key()
+    model_name = _norm(os.getenv("VISION_MODEL"))
+    if not (base_url and api_key and model_name):
+        return None
+    return _build_single_provider(
+        provider_name,
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        label="delegated_vision",
+    )
+
+
+def get_vision_verifier_provider() -> BaseLLMProvider | None:
+    provider_name = _norm(os.getenv("VISION_VERIFY_PROVIDER")) or _norm(os.getenv("VISION_PROVIDER")) or "openai_compat"
+    base_url = _norm(os.getenv("VISION_VERIFY_BASE_URL")) or _norm(os.getenv("VISION_BASE_URL")) or resolve_unified_gateway_base()
+    api_key = _norm(os.getenv("VISION_VERIFY_API_KEY")) or _norm(os.getenv("VISION_API_KEY")) or resolve_openai_compat_api_key()
+    model_name = _norm(os.getenv("VISION_VERIFY_MODEL"))
+    if not (base_url and api_key and model_name):
+        return None
+    return _build_single_provider(
+        provider_name,
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        label="delegated_vision_verify",
+    )
+
+
+def vision_routing_metadata() -> dict[str, Any]:
+    from backend.agent.tools.vision_ops import local_ocr_metadata
+
+    routing_mode = _norm(os.getenv("VISION_ROUTING_MODE", "auto")).lower() or "auto"
+    native_enabled = _norm(os.getenv("AGENT_NATIVE_VISION_ENABLED", "false")).lower() in {"1", "true", "yes", "on"}
+    delegated_provider = get_vision_provider()
+    verifier_provider = get_vision_verifier_provider()
+    delegated_configured = delegated_provider is not None
+    local_ocr = local_ocr_metadata()
+
+    route = "unavailable"
+    if routing_mode == "off":
+        route = "unavailable"
+    elif routing_mode == "native":
+        route = "native" if native_enabled else "unavailable"
+    elif routing_mode == "local_ocr":
+        route = "local_ocr" if local_ocr["configured"] else "unavailable"
+    elif routing_mode == "delegated":
+        route = "delegated" if delegated_configured else "unavailable"
+    else:
+        if local_ocr["configured"]:
+            route = "local_ocr"
+        elif native_enabled:
+            route = "native"
+        elif delegated_configured:
+            route = "delegated"
+
+    return {
+        "route": route,
+        "routing_mode": routing_mode,
+        "native_enabled": native_enabled,
+        "configured": route != "unavailable",
+        "local_ocr": local_ocr,
+        "model": delegated_provider.model_name if delegated_provider is not None else None,
+        "provider": delegated_provider.provider_name if delegated_provider is not None else None,
+        "verify_model": verifier_provider.model_name if verifier_provider is not None else None,
+        "verify_provider": verifier_provider.provider_name if verifier_provider is not None else None,
+        "auto_inspect_enabled": _norm(os.getenv("VISION_AUTO_INSPECT", "true")).lower() in {"1", "true", "yes", "on"},
+    }
+
+
 def reset_provider() -> None:
     global _PROVIDER
     _PROVIDER = None
@@ -219,11 +292,22 @@ def validate_provider_config() -> tuple[bool, str]:
 
 def provider_metadata() -> dict[str, Any]:
     requested_provider = _norm(os.getenv("AGENT_PROVIDER", "openai_compat")).lower()
-    requested_model = _norm(os.getenv("AGENT_MODEL", "agent-default"))
+    requested_model = (
+        _norm(os.getenv("AGENT_LOGICAL_MODEL_ROUTE"))
+        or _norm(os.getenv("AGENT_MODEL", "agent-default"))
+    )
+    requested_active_model = (
+        _norm(os.getenv("AGENT_ACTIVE_MODEL"))
+        or _norm(os.getenv("OPENAI_COMPAT_MODEL"))
+        or _norm(os.getenv("LITELLM_MODEL_NAME"))
+        or _norm(os.getenv("LLM_DEFAULT_MODEL"))
+        or requested_model
+    )
+    requested_transport_base = resolve_unified_gateway_base()
     runtime_overrides = get_service_overrides("provider")
     ok, detail = validate_provider_config()
     actual_provider = requested_provider
-    actual_model = requested_model
+    actual_model = requested_active_model
     fallbacks: list[dict[str, str]] = []
     if ok:
         try:
@@ -242,10 +326,19 @@ def provider_metadata() -> dict[str, Any]:
         "requested": {
             "provider": requested_provider,
             "model": requested_model,
+            "logical_model_route": requested_model,
+            "active_transport_model": requested_active_model,
+            "transport_base_url": requested_transport_base,
         },
         "actual": {
             "provider": actual_provider,
             "model": actual_model,
+        },
+        "logical_model_route": requested_model,
+        "transport": {
+            "provider": "openrouter" if "openrouter.ai" in requested_transport_base else "openai_compat",
+            "base_url": requested_transport_base,
+            "model": requested_active_model,
         },
         "runtime_overrides": {
             "present": bool(runtime_overrides),
@@ -253,4 +346,5 @@ def provider_metadata() -> dict[str, Any]:
         },
         "detail": detail,
         "fallbacks": fallbacks,
+        "vision": vision_routing_metadata(),
     }

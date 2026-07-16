@@ -17,7 +17,8 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from backend.agent.providers import get_provider, provider_metadata
-from backend.agent.providers.factory import get_multimodal_audio_provider
+from backend.agent.providers.factory import get_multimodal_audio_provider, vision_routing_metadata
+from backend.agent.tools import vision_ops
 from backend.agent.providers.base import BaseLLMProvider, LLMContentBlock
 from backend.agent.skills import build_skills_prompt
 from backend.agent.telemetry import SessionReplayLogger
@@ -333,7 +334,7 @@ def _build_project_governance_block(
         "- Project mode is active for this session.",
         "- Always work in phases and emit phase reports (PHASE_N_REPORT.md).",
         "- Before implementation, produce BUILD_PLAN.md with milestones, risks, and test strategy.",
-        "- Use session workspace tools first: pwd, ls, mkdir -p, write files, run tests, patch, repeat.",
+        "- Use session workspace tools deliberately; do not do generic shell bootstrap unless repository implementation work actually requires it.",
     ]
     if not plan_required:
         lines.append("- Plan approval gate is disabled by policy; proceed after writing BUILD_PLAN.md.")
@@ -953,7 +954,52 @@ async def run_agent(
 
     if file_ids:
         include_images = bool(getattr(provider, "supports_image_prompt_blocks", False))
+        vision_meta = vision_routing_metadata()
+        auto_visual_inspection = (
+            vision_meta.get("route") != "unavailable"
+            and bool(vision_meta.get("auto_inspect_enabled"))
+        )
+        auto_inspect_limit = max(0, int(os.getenv("VISION_AUTO_INSPECT_MAX_IMAGES", "3")))
+        auto_inspected = 0
         for file_id in file_ids:
+            if file_ops.is_image_file(file_id):
+                filename = file_ops.display_name(file_id)
+                if auto_visual_inspection and auto_inspected < auto_inspect_limit:
+                    observation = await vision_ops.inspect_visual(
+                        file_id=file_id,
+                        question=(
+                            "Inspect this screenshot/image and identify visible state, text, errors, warnings, "
+                            "controls, and anything relevant to the user's request.\n\n"
+                            f"User request:\n{user_message or 'No additional user text provided.'}"
+                        ),
+                        mode="auto",
+                        output_format="structured",
+                        verify_with_fusion=False,
+                    )
+                    user_content.append(
+                        {
+                            "type": "text",
+                            "text": (
+                                "## Verified visual observation\n\n"
+                                "Source: PolyMorph Perceptor auto-routing\n"
+                                f"Artifact: attachment://{file_id}\n\n"
+                                f"{observation}"
+                            ),
+                        }
+                    )
+                    auto_inspected += 1
+                    continue
+                if vision_meta.get("route") == "unavailable":
+                    user_content.append(
+                        {
+                            "type": "text",
+                            "text": (
+                                f"[Image attachment: {filename}] No native or delegated vision lane is currently configured, "
+                                "so the agent can see only the filename/attachment presence."
+                            ),
+                        }
+                    )
+                    continue
             blocks = await file_ops.get_file_prompt_blocks(file_id, include_images=include_images)
             user_content.extend(blocks)
 
