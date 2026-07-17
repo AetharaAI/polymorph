@@ -166,6 +166,66 @@ tool_contract:
   dynamic_tools_require_schema_load: true
   schema_loader_tool: read_tool_schema
   session_loaded_schema_key: loaded_tool_schemas
+execution_boundary_contract:
+  builder: mini-agent/backend/agent/tools/execution_boundary.py
+  consumers:
+    - mini-agent/backend/agent/tools/shell.py
+    - mini-agent/backend/agent/tools/project_runner.py
+    - mini-agent/backend/agent/tools/health_check.py
+    - mini-agent/backend/api/health.py
+    - mini-agent/backend/api/connections.py
+    - mini-agent/backend/prompts/system_prompt.md
+    - mini-agent/frontend/src/components/StatusBar.tsx
+  modes:
+    - contained
+    - brokered
+    - host_elevated
+  fields:
+    - session_id
+    - workspace_id
+    - workspace_root
+    - shell_profile
+    - scope_mode
+    - scope_summary
+    - model_guidance
+    - single_command_only
+    - outside_workspace_access
+    - allowed_roots
+    - http_egress.tools
+    - http_egress.shell
+    - http_egress.connectors
+    - http_egress.raw_sockets
+    - http_egress_note
+    - allowed_commands
+    - container_scope_note
+  query_rule:
+    api_health_routes_accept_optional_session_id: true
+  semantics:
+    contained: session_workspace_only
+    brokered: backend_container_visible_paths_beyond_workspace_without_claiming_host_root
+    host_elevated: explicit_broader_machine_scope_only_when_enabled
+vision_contract:
+  tool_file: mini-agent/backend/agent/tools/vision_ops.py
+  delegated_provider_factory: mini-agent/backend/agent/providers/factory.py
+  delegated_provider_impl: mini-agent/backend/agent/providers/openai_compat_provider.py
+  delegated_failure_rule: when_provider_returns_http_success_but_no_usable_normalized_blocks_inspect_visual_returns_status_error_with_error_kind_empty_provider_response
+  delegated_diagnostics_fields:
+    - provider
+    - model
+    - request_id
+    - provider_response_id
+    - http_status
+    - finish_reason
+    - choices_count
+    - raw_message_content_type
+    - raw_content_length
+    - normalized_block_count
+    - normalized_block_types
+    - usage
+    - stream_requested
+    - enable_thinking
+    - has_refusal
+    - has_output_text
 memory_contract:
   service: mini-agent/backend/memory/service.py
   backends:

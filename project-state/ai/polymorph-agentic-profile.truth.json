@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-17T03:51:49Z",
+  "agent": {
+    "name": "PolyMorph",
+    "project_name": "AetherOps_PolyMorph_Internal",
+    "type": "internal_harness",
+    "product_mode": "internal_only",
+    "role": "model-agnostic agentic harness and operator surface",
+    "primary_app_path": "mini-agent",
+    "canonical_truth_sources": [
+      "PROJECT_STATE.md",
+      "IMPORTS.yaml",
+      "project-state/ai/manifest.yaml",
+      "project-state/ai/current-state.yaml",
+      "project-state/ai/runtime-contracts.yaml",
+      "project-state/ai/repo-map.yaml"
+    ]
+  },
+  "runtime": {
+    "provider_mode": "triad_zero_local_substrates_with_temporary_openrouter_openai_compat_transport",
+    "primary_model_route": "grm2.6-plus",
+    "active_transport_provider": "openrouter",
+    "active_transport_model": "tencent/hy3:free",
+    "explicit_fallback_enabled": true,
+    "explicit_fallback_provider": "openai_compat",
+    "effective_distinct_fallback_present": true,
+    "dynamic_tool_selection_enabled": true,
+    "temporal_context_enabled": true,
+    "tool_manifest_enabled": true,
+    "tool_manifest_path": "mini-agent/backend/TOOLS.md",
+    "provider_env_load_order": [
+      "mini-agent/.env",
+      "mini-agent/backend/.env",
+      "mini-agent/.env.polymorph"
+    ]
+  },
+  "operator_modes": {
+    "fleet_operator_enabled": true,
+    "internal_operator_mode": true,
+    "channel_control_plane_enabled": true,
+    "channel_control_plane_status": "telegram_webhook_bridge_live_slice_without_queue_whatsapp_or_action_receipts",
+    "operational_autonomy_priority_order": [
+      "message_adapter_layer",
+      "syndicate_marketplace_adapter",
+      "action_ledger_and_approval_gate",
+      "outbound_notification_adapters",
+      "opportunity_matching_and_agent_self_posting"
+    ]
+  },
+  "execution_boundary": {
+    "canonical_contract_enabled": true,
+    "builder": "mini-agent/backend/agent/tools/execution_boundary.py",
+    "modes": [
+      "contained",
+      "brokered",
+      "host_elevated"
+    ],
+    "session_aware_status": true,
+    "structured_http_egress": true,
+    "api_health_accepts_session_id_query": true,
+    "current_truth": {
+      "shell_profiles_supported": [
+        "strict",
+        "project",
+        "project_full"
+      ],
+      "scope_semantics": {
+        "contained": "session workspace only",
+        "brokered": "backend-container-visible paths beyond workspace without claiming host root",
+        "host_elevated": "explicit broader machine scope only when enabled"
+      }
+    }
+  },
+  "vision": {
+    "enabled": true,
+    "inspect_visual_tool": "inspect_visual",
+    "delegated_tool": "inspect_image",
+    "route_order": [
+      "local_ocr_for_text_heavy_images",
+      "delegated_vision_for_layout_diagram_ui_understanding",
+      "delegated_vision_as_local_ocr_fallback"
+    ],
+    "local_ocr_subprocess_isolation_enabled": true,
+    "delegated_provider": {
+      "provider": "openai_compat",
+      "model": "xiaomi/mimo-v2.5",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "verifier_provider": {
+      "provider": "openai_compat",
+      "model": "openrouter/fusion"
+    },
+    "truthful_failure_handling": {
+      "non_text_block_fallback_enabled": true,
+      "empty_provider_response_typed_failure_enabled": true,
+      "failure_kind": "empty_provider_response"
+    },
+    "live_verification": {
+      "verified_on_utc": "2026-07-17T03:51:49Z",
+      "screenshot_session_id": "vision-live-2026-07-17",
+      "uploaded_file_id": "eeae2e627f556479",
+      "provider_request_id": "f3819dd1ae36",
+      "provider_response_id": "gen-1784260265-8Tzm9HkrD9s3xdsdgODu",
+      "http_status": 200,
+      "finish_reason": "length",
+      "input_tokens": 2099,
+      "output_tokens": 1200,
+      "raw_message_content_type": "NoneType",
+      "normalized_block_count": 0,
+      "normalized_block_types": [],
+      "result": "typed truthful failure returned instead of empty successful observation",
+      "stop_condition": "B"
+    }
+  },
+  "voice": {
+    "enabled": true,
+    "voice_mode_path": "persistent_live_browser_voice_session_to_full_harness_loop_to_kokoro_realtime_tts_with_auto_resume",
+    "voice_agent_provider": "openai_compat",
+    "voice_agent_model": "qwen3.5-122",
+    "voice_agent_fallback_model": "grm2.6-plus",
+    "voice_agent_base_url": "https://openrouter.ai/api/v1",
+    "tts_transport": "gateway_realtime_stream",
+    "default_voice": "af_heart",
+    "live_operator_verified": true,
+    "live_operator_verified_on": "2026-03-17"
+  },
+  "memory": {
+    "runtime_memory_endpoints_use_docker_dns_on_aether_infra": true,
+    "runtime_memory_endpoint_map": {
+      "redis": "aether-redis:6379",
+      "mongo": "aether-mongo:27017",
+      "postgres": "aether-postgres:5432",
+      "qdrant": "qdrant:6333"
+    },
+    "namespace_behavior": {
+      "redis": "key_prefix",
+      "mongodb": "document_field",
+      "postgres": "schema_or_shared",
+      "qdrant": "collection_policy_independent"
+    },
+    "write_failures_block_primary_response": false
+  },
+  "live_validation": {
+    "github_cli_present": true,
+    "github_auth_ok": true,
+    "frontend_build_passed": true,
+    "backend_py_compile_passed": true,
+    "provider_capture_tests_passed": true,
+    "provider_capture_tests_count": 15,
+    "health_endpoint_live_new_execution_boundary_shape_verified": true,
+    "backend_rebuilt_for_live_vision_verification": true
+  },
+  "known_truthful_limits": [
+    "Local OCR is not fully configured on this machine for the delegated-vision screenshot path tested on July 17, 2026.",
+    "The live Xiaomi MiMo-V2.5 delegated call returned HTTP success with no usable normalized content for the verified screenshot; the harness now exposes that truthfully but does not yet explain the upstream model behavior.",
+    "No live RedWatch-compatible receipt emitter exists for this provider-capture slice yet.",
+    "Channel runtime still lacks queue, WhatsApp, and canonical action-receipt coverage."
+  ],
+  "repo_publish_state": {
+    "git_branch": "main",
+    "git_remote": "git@github.com:AetharaAI/polymorph.git",
+    "github_account": "AetharaAI",
+    "worktree_mixed": true,
+    "push_blocker": "Working tree contains mixed modified and untracked changes beyond the verified harness/runtime slice, so publish scope must be confirmed before staging."
+  },
+  "recommended_publish_scope_from_this_pass": {
+    "files": [
+      "BUILD_PLAN.md",
+      "IMPORTS.yaml",
+      "PROJECT_STATE.md",
+      "build-docs/PHASE_8_REPORT.md",
+      "mini-agent/backend/agent/providers/base.py",
+      "mini-agent/backend/agent/providers/openai_compat_provider.py",
+      "mini-agent/backend/agent/tools/execution_boundary.py",
+      "mini-agent/backend/agent/tools/health_check.py",
+      "mini-agent/backend/agent/tools/project_runner.py",
+      "mini-agent/backend/agent/tools/shell.py",
+      "mini-agent/backend/agent/tools/vision_ops.py",
+      "mini-agent/backend/api/connections.py",
+      "mini-agent/backend/api/health.py",
+      "mini-agent/backend/prompts/system_prompt.md",
+      "mini-agent/backend/tests/test_openai_compat_provider_capture.py",
+      "mini-agent/frontend/src/components/StatusBar.tsx",
+      "mini-agent/frontend/src/lib/api.ts",
+      "mini-agent/frontend/src/lib/types.ts",
+      "project-state/ai/current-state.yaml",
+      "project-state/ai/polymorph-agentic-profile.truth.json",
+      "project-state/ai/runtime-contracts.yaml",
+      "project-state/human/Changelog.md",
+      "project-state/human/Runtime-Contracts.md"
+    ],
+    "description": "execution boundary truth alignment plus delegated vision provider capture hardening"
+  }
+}

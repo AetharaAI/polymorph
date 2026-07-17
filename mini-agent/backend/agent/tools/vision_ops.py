@@ -86,6 +86,36 @@ def _parse_structured_response(text: str) -> dict[str, Any]:
     }
 
 
+def _extract_response_text(response: Any) -> dict[str, Any]:
+    text_parts: list[str] = []
+    fallback_parts: list[str] = []
+    block_types: list[str] = []
+
+    for block in getattr(response, "content", []) or []:
+        block_type = str(getattr(block, "type", "") or "").strip() or "unknown"
+        block_types.append(block_type)
+
+        text_value = str(getattr(block, "text", "") or "").strip()
+        thinking_value = str(getattr(block, "thinking", "") or "").strip()
+
+        if text_value:
+            text_parts.append(text_value)
+        elif block_type == "thinking" and thinking_value:
+            fallback_parts.append(thinking_value)
+        elif thinking_value:
+            fallback_parts.append(thinking_value)
+
+    primary_text = "\n".join(part for part in text_parts if part).strip()
+    fallback_text = "\n".join(part for part in fallback_parts if part).strip()
+    effective_text = primary_text or fallback_text
+
+    return {
+        "text": effective_text,
+        "used_fallback": not bool(primary_text) and bool(fallback_text),
+        "block_types": block_types,
+    }
+
+
 def local_ocr_metadata() -> dict[str, Any]:
     enabled = str(os.getenv("VISION_LOCAL_OCR_ENABLED", "true")).strip().lower() in {"1", "true", "yes", "on"}
     engine = str(os.getenv("VISION_LOCAL_OCR_ENGINE", "paddleocr")).strip().lower() or "paddleocr"
@@ -326,7 +356,8 @@ async def _inspect_with_vlm(
         temperature=0.1,
         enable_thinking=False,
     )
-    response_text = "\n".join(block.text or "" for block in response.content if block.type == "text").strip()
+    extracted = _extract_response_text(response)
+    response_text = str(extracted.get("text") or "").strip()
 
     payload: dict[str, Any] = {
         "status": "ok",
@@ -338,11 +369,36 @@ async def _inspect_with_vlm(
         "provider": response.provider_name or provider.provider_name,
         "model": response.model_name or provider.model_name,
         "route": "delegated_vision",
+        "response_block_types": extracted.get("block_types") or [],
     }
+    empty_response_meta = response.metadata.get("empty_response_diagnostics") if isinstance(response.metadata, dict) else None
+    if not response.content and isinstance(empty_response_meta, dict):
+        return {
+            "status": "error",
+            "error_kind": "empty_provider_response",
+            "message": "Delegated vision provider returned no usable normalized content.",
+            "inspection_mode": "vlm",
+            "engine": response.model_name or provider.model_name,
+            "artifact_ref": f"attachment://{resolved_file_id}",
+            "file_id": resolved_file_id,
+            "filename": original_name,
+            "provider": response.provider_name or provider.provider_name,
+            "model": response.model_name or provider.model_name,
+            "route": "delegated_vision",
+            "diagnostics": empty_response_meta,
+            "response_block_types": extracted.get("block_types") or [],
+        }
     if output_format == "structured":
         payload.update(_parse_structured_response(response_text))
     else:
         payload["summary"] = response_text
+
+    if extracted.get("used_fallback"):
+        payload.setdefault("uncertainties", [])
+        if isinstance(payload["uncertainties"], list):
+            payload["uncertainties"].append(
+                "Delegated vision returned no text blocks; summary was recovered from non-text response blocks."
+            )
 
     if verify_with_fusion:
         verifier = get_vision_verifier_provider()
@@ -355,12 +411,22 @@ async def _inspect_with_vlm(
                 temperature=0.1,
                 enable_thinking=False,
             )
-            verify_text = "\n".join(block.text or "" for block in verify_response.content if block.type == "text").strip()
+            verify_extracted = _extract_response_text(verify_response)
+            verify_text = str(verify_extracted.get("text") or "").strip()
             payload["verification"] = {
                 "provider": verify_response.provider_name or verifier.provider_name,
                 "model": verify_response.model_name or verifier.model_name,
+                "response_block_types": verify_extracted.get("block_types") or [],
                 "observation": _parse_structured_response(verify_text),
             }
+            if verify_extracted.get("used_fallback"):
+                observation = payload["verification"].get("observation")
+                if isinstance(observation, dict):
+                    uncertainties = observation.setdefault("uncertainties", [])
+                    if isinstance(uncertainties, list):
+                        uncertainties.append(
+                            "Verification model returned no text blocks; observation was recovered from non-text response blocks."
+                        )
 
     return payload
 

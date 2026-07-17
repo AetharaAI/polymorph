@@ -99,8 +99,11 @@ class OpenAICompatProvider(BaseLLMProvider):
 
         self._model_name = (
             model_name
-            or os.getenv("AGENT_MODEL")
+            or os.getenv("AGENT_ACTIVE_MODEL")
             or os.getenv("OPENAI_COMPAT_MODEL")
+            or os.getenv("LITELLM_MODEL_NAME")
+            or os.getenv("LLM_DEFAULT_MODEL")
+            or os.getenv("AGENT_MODEL")
             or primary_model
             or "gpt-4o-mini"
         )
@@ -373,6 +376,129 @@ class OpenAICompatProvider(BaseLLMProvider):
         except Exception:
             pass
         return body[:400]
+
+    def _obj_get(self, obj: Any, key: str, default: Any = None) -> Any:
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def _coerce_text_value(self, value: Any) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, list):
+            parts = [self._coerce_text_value(item) for item in value]
+            return "\n".join(part for part in parts if part).strip()
+        if isinstance(value, dict):
+            for key in ("text", "content", "value", "output_text"):
+                coerced = self._coerce_text_value(value.get(key))
+                if coerced:
+                    return coerced
+            return ""
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _normalize_message_content(self, content: Any) -> tuple[str, dict[str, Any]]:
+        meta: dict[str, Any] = {
+            "raw_content_type": type(content).__name__,
+            "raw_content_length": 0,
+        }
+        if isinstance(content, str):
+            normalized = content.strip()
+            meta["raw_content_length"] = len(content)
+            return normalized, meta
+        if isinstance(content, list):
+            meta["raw_content_length"] = len(content)
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    if item.strip():
+                        parts.append(item.strip())
+                    continue
+                if isinstance(item, dict):
+                    item_type = str(item.get("type") or "").strip().lower()
+                    if item_type in {"text", "output_text", "input_text"}:
+                        text = self._coerce_text_value(item.get("text") or item.get("content") or item.get("value"))
+                        if text:
+                            parts.append(text)
+                            continue
+                    text = self._coerce_text_value(item.get("text") or item.get("content") or item.get("value"))
+                    if text:
+                        parts.append(text)
+                        continue
+                text = self._coerce_text_value(item)
+                if text:
+                    parts.append(text)
+            return "\n".join(part for part in parts if part).strip(), meta
+        normalized = self._coerce_text_value(content)
+        meta["raw_content_length"] = len(normalized)
+        return normalized, meta
+
+    def _message_refusal_text(self, message: Any) -> str:
+        return self._coerce_text_value(
+            self._obj_get(message, "refusal")
+            or self._obj_get(self._obj_get(message, "provider_specific_fields") or {}, "refusal")
+        )
+
+    def _response_output_text(self, payload: Any) -> str:
+        direct = self._coerce_text_value(self._obj_get(payload, "output_text"))
+        if direct:
+            return direct
+        output = self._obj_get(payload, "output")
+        if isinstance(output, list):
+            for item in output:
+                text = self._coerce_text_value(item)
+                if text:
+                    return text
+        return ""
+
+    def _empty_response_diagnostics(
+        self,
+        *,
+        request_id: str,
+        status_code: int | None,
+        data: Any,
+        message: Any,
+        finish_reason: str,
+        usage: LLMUsage,
+        blocks: list[LLMContentBlock],
+        stream_requested: bool,
+        enable_thinking: bool | None,
+    ) -> dict[str, Any]:
+        choices = self._obj_get(data, "choices") or []
+        refusal_text = self._message_refusal_text(message)
+        content_value = self._obj_get(message, "content")
+        output_text = self._response_output_text(data)
+        response_id = (
+            self._obj_get(data, "id")
+            or self._obj_get(message, "id")
+            or None
+        )
+        return {
+            "kind": "empty_provider_response",
+            "provider": self.provider_name,
+            "model": self.model_name,
+            "request_id": request_id,
+            "provider_response_id": str(response_id or "").strip() or None,
+            "http_status": status_code,
+            "response_object_type": type(data).__name__,
+            "message_object_type": type(message).__name__,
+            "finish_reason": str(finish_reason or "stop"),
+            "choices_count": len(choices) if isinstance(choices, list) else 0,
+            "raw_message_content_type": type(content_value).__name__,
+            "raw_content_length": len(content_value) if isinstance(content_value, list | str) else 0,
+            "normalized_block_count": len(blocks),
+            "normalized_block_types": [block.type for block in blocks],
+            "usage": {
+                "input_tokens": int(usage.input_tokens),
+                "output_tokens": int(usage.output_tokens),
+            },
+            "stream_requested": stream_requested,
+            "enable_thinking": enable_thinking,
+            "has_refusal": bool(refusal_text),
+            "has_output_text": bool(output_text),
+            "refusal_preview": refusal_text[:200] if refusal_text else "",
+        }
 
     def _extract_think_tags(self, text: str) -> tuple[str, list[str]]:
         raw = str(text or "")
@@ -689,21 +815,26 @@ class OpenAICompatProvider(BaseLLMProvider):
 
     def _build_blocks_from_message(
         self,
-        message: dict[str, Any],
+        message: dict[str, Any] | Any,
         *,
         available_tool_names: set[str] | None = None,
     ) -> list[LLMContentBlock]:
         blocks: list[LLMContentBlock] = []
 
         reasoning_text = (
-            message.get("reasoning_content")
-            or (message.get("provider_specific_fields") or {}).get("reasoning_content")
-            or (message.get("provider_specific_fields") or {}).get("reasoning")
+            self._obj_get(message, "reasoning_content")
+            or self._obj_get(self._obj_get(message, "provider_specific_fields") or {}, "reasoning_content")
+            or self._obj_get(self._obj_get(message, "provider_specific_fields") or {}, "reasoning")
         )
         if not isinstance(reasoning_text, str):
             reasoning_text = ""
 
-        content_text = message.get("content")
+        content_text, _ = self._normalize_message_content(self._obj_get(message, "content"))
+        refusal_text = self._message_refusal_text(message)
+        if not content_text:
+            content_text = self._response_output_text(message)
+        if not content_text and refusal_text:
+            content_text = refusal_text
         recovered_tool_calls: list[dict[str, Any]] = []
         if isinstance(content_text, str) and content_text.strip():
             raw_content_for_debug = str(content_text)
@@ -809,7 +940,7 @@ class OpenAICompatProvider(BaseLLMProvider):
         if isinstance(content_text, str) and content_text.strip():
             blocks.append(LLMContentBlock(type="text", text=content_text))
 
-        tool_calls = list(message.get("tool_calls") or [])
+        tool_calls = list(self._obj_get(message, "tool_calls") or [])
         if recovered_tool_calls:
             tool_calls.extend(recovered_tool_calls)
 
@@ -1238,11 +1369,12 @@ class OpenAICompatProvider(BaseLLMProvider):
                 )
             raise
 
-        choice = (data.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
-        finish_reason = choice.get("finish_reason") or "stop"
-        upstream_model = str(data.get("model") or "") or self.model_name
-        usage_data = data.get("usage") or {}
+        choices = self._obj_get(data, "choices") or []
+        choice = choices[0] if isinstance(choices, list) and choices else {}
+        message = self._obj_get(choice, "message") or {}
+        finish_reason = self._obj_get(choice, "finish_reason") or "stop"
+        upstream_model = str(self._obj_get(data, "model") or "") or self.model_name
+        usage_data = self._obj_get(data, "usage") or {}
         usage = LLMUsage(
             input_tokens=int(usage_data.get("prompt_tokens") or 0),
             output_tokens=int(usage_data.get("completion_tokens") or 0),
@@ -1251,8 +1383,35 @@ class OpenAICompatProvider(BaseLLMProvider):
             message,
             available_tool_names={str(tool.get("name") or "").strip() for tool in tools},
         )
+        if not blocks:
+            synthetic_output_text = self._response_output_text(data)
+            if synthetic_output_text:
+                blocks = self._build_blocks_from_message(
+                    {"content": synthetic_output_text},
+                    available_tool_names={str(tool.get("name") or "").strip() for tool in tools},
+                )
         recovered_tool_use = any(block.type == "tool_use" for block in blocks)
         stop_reason = "tool_use" if (finish_reason in {"tool_calls", "function_call"} or recovered_tool_use) else "end_turn"
+        response_metadata: dict[str, Any] = {}
+        if not blocks:
+            response_metadata["empty_response_diagnostics"] = self._empty_response_diagnostics(
+                request_id=request_id,
+                status_code=resp.status_code,
+                data=data,
+                message=message,
+                finish_reason=str(finish_reason or "stop"),
+                usage=usage,
+                blocks=blocks,
+                stream_requested=self._stream_enabled and on_stream_event is not None,
+                enable_thinking=resolved_enable_thinking,
+            )
+            self._log_request_event(
+                "empty_normalized_response",
+                {
+                    **response_metadata["empty_response_diagnostics"],
+                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
         self._log_request_event(
             "request_success",
             {
@@ -1266,6 +1425,7 @@ class OpenAICompatProvider(BaseLLMProvider):
                 "tool_use_count": sum(1 for block in blocks if block.type == "tool_use"),
                 "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
                 "tool_fallback_used": bool(fallback_error),
+                "normalized_block_count": len(blocks),
             },
         )
         terminal_logged = True
@@ -1284,4 +1444,5 @@ class OpenAICompatProvider(BaseLLMProvider):
             usage=usage,
             provider_name=self.provider_name,
             model_name=self.model_name,
+            metadata=response_metadata,
         )

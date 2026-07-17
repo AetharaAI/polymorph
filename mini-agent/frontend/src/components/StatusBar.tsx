@@ -82,11 +82,26 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
   const visionModel = visionRoute === 'local_ocr'
     ? (vision?.local_ocr?.engine || null)
     : (vision?.model || null);
+  const executionPolicy = diagnostics?.execution_policy || null;
+  const scopeMode = executionPolicy?.scope_mode || 'contained';
+  const scopeClass =
+    scopeMode === 'host_elevated'
+      ? 'text-red-300'
+      : scopeMode === 'brokered'
+        ? 'text-amber-300'
+        : 'text-emerald-400';
+  const scopeLabel =
+    scopeMode === 'host_elevated'
+      ? 'SCOPE: HOST-ELEVATED'
+      : scopeMode === 'brokered'
+        ? 'SCOPE: BROKERED'
+        : 'SCOPE: CONTAINED';
+  const scopeTitle = executionPolicy?.scope_summary || 'Execution scope unavailable';
 
   return (
     <div className="border-t border-border bg-secondary">
       {showPanel && diagnostics && (
-        <div className="px-4 py-3 border-b border-border text-xs text-muted-foreground grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="px-4 py-3 border-b border-border text-xs text-muted-foreground grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="rounded border border-border bg-background/30 p-2">
             <div className="font-medium text-foreground mb-1">Runtime</div>
             <div>Uptime: {formatUptime(diagnostics.uptime_seconds)}</div>
@@ -112,6 +127,14 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
               {diagnostics.services?.asr?.base_url || 'ASR_BASE_URL not set'}
             </div>
             <div>Model: {diagnostics.services?.asr?.model || 'n/a'}</div>
+          </div>
+          <div className="rounded border border-border bg-background/30 p-2">
+            <div className="font-medium text-foreground mb-1">Execution Scope</div>
+            <div className={scopeClass}>{scopeLabel}</div>
+            <div>Profile: {executionPolicy?.shell_profile || 'n/a'}</div>
+            <div className="truncate" title={executionPolicy?.workspace_root || ''}>
+              {executionPolicy?.workspace_root || 'workspace unavailable'}
+            </div>
           </div>
         </div>
       )}
@@ -154,6 +177,9 @@ export function StatusBar({ usage, toolHealth, providerHealth, diagnostics }: St
             </span>
           )}
           <span className={asrClass}>ASR {asrStatus}</span>
+          <span className={scopeClass} title={scopeTitle}>
+            {scopeLabel}
+          </span>
           <span className={visionClass} title={visionModel || visionLabel}>
             {visionLabel}{visionModel ? ` ${visionModel}` : ''}
           </span>

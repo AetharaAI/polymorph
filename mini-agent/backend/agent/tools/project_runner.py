@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from backend.agent.tools.execution_boundary import env_flag, execution_boundary_for_session
 from backend.agent.tools.workspace import get_session_workspace
 
 
@@ -21,14 +22,6 @@ DEFAULT_COMMAND_TIMEOUT = int(os.getenv("PROJECT_COMMAND_TIMEOUT_SECONDS", "300"
 DEFAULT_HTTP_TIMEOUT = float(os.getenv("PROJECT_HTTP_TIMEOUT_SECONDS", "20"))
 MAX_OUTPUT_CHARS = int(os.getenv("PROJECT_RUNNER_MAX_OUTPUT_CHARS", "8000"))
 MAX_LOG_LINES = int(os.getenv("PROJECT_RUNNER_MAX_LOG_LINES", "2000"))
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
 
 def _trim(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     if len(text) <= max_chars:
@@ -42,7 +35,8 @@ def _safe_cwd(session_id: str, cwd: str | None) -> Path:
         return workspace
 
     raw_cwd = cwd.strip()
-    allow_outside_workspace = _env_flag("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS", False)
+    boundary = execution_boundary_for_session(session_id)
+    allow_outside_workspace = bool(boundary.get("outside_workspace_access"))
     if raw_cwd.startswith("/"):
         if not allow_outside_workspace:
             raise ValueError("cwd escapes session workspace")
@@ -187,7 +181,9 @@ async def http_check(
         return f"Error: Unsupported method '{method_upper}'"
     if not (url or "").strip().startswith(("http://", "https://")):
         return "Error: http_check requires absolute http(s) URL"
-    if not _env_flag("AGENT_ALLOW_HTTP_EGRESS", True):
+    boundary = execution_boundary_for_session("default")
+    http_egress = boundary.get("http_egress") or {}
+    if not http_egress.get("tools", False):
         return json.dumps(
             {
                 "ok": False,
@@ -195,6 +191,7 @@ async def http_check(
                 "url": url.strip(),
                 "method": method_upper,
                 "error": "HTTP/network egress is disabled by execution policy.",
+                "execution_policy": boundary,
             },
             ensure_ascii=False,
             indent=2,
@@ -221,6 +218,7 @@ async def http_check(
             "expect_status": expect_status,
             "headers": dict(resp.headers),
             "body_preview": _trim(resp.text or ""),
+            "execution_policy": boundary,
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
     except Exception as exc:
@@ -231,6 +229,7 @@ async def http_check(
             "method": method_upper,
             "elapsed_ms": int((time.time() - started) * 1000),
             "error": str(exc),
+            "execution_policy": boundary,
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
 

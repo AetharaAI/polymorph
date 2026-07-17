@@ -30,6 +30,7 @@ class LLMResponse:
     model_name: str | None = None
     fallback_used: bool = False
     notice: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BaseLLMProvider(ABC):

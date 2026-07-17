@@ -6,6 +6,7 @@ from pathlib import Path
 
 from backend.agent.providers import provider_metadata
 from backend.agent.tools import calculator, code_executor, shell
+from backend.agent.tools.execution_boundary import execution_boundary_for_session
 from backend.memory import get_memory_service
 
 
@@ -71,7 +72,7 @@ async def run_tool_health_checks() -> dict:
     }
 
 
-async def get_harness_status() -> str:
+async def get_harness_status(session_id: str | None = None) -> str:
     from backend.agent.tools.registry import TOOL_DEFINITIONS
 
     memory = await get_memory_service()
@@ -86,10 +87,15 @@ async def get_harness_status() -> str:
         "qdrant_connected": getattr(memory, "qdrant", None) is not None,
         "postgres_connected": getattr(memory, "postgres", None) is not None,
     }
+    effective_session_id = session_id or "default"
+    execution_policy = execution_boundary_for_session(effective_session_id)
     payload = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "session_id": effective_session_id,
         "provider": provider,
-        "execution_policy": shell.execution_policy_for_session("default"),
+        "execution_policy": execution_policy,
+        "execution_scope_summary": execution_policy.get("scope_summary"),
+        "execution_scope_guidance": execution_policy.get("model_guidance"),
         "tool_count": len(tool_names),
         "tools": tool_names,
         "skills_registry_path": str(Path(__file__).resolve().parents[2] / "SKILLS.md"),

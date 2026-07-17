@@ -34,6 +34,12 @@ runtime:
     - mini-agent/.env
     - mini-agent/backend/.env
     - mini-agent/.env.polymorph
+  runtime_memory_endpoints_use_docker_dns_on_aether_infra: true
+  runtime_memory_endpoint_map:
+    redis: aether-redis:6379
+    mongo: aether-mongo:27017
+    postgres: aether-postgres:5432
+    qdrant: qdrant:6333
   implicit_litellm_fallbacks_require_opt_in_when_explicit_fallback_exists: true
   split_client_facing_litellm_gateways_removed: true
   openai_compat_context_window_retry_enabled: true
@@ -56,6 +62,29 @@ runtime:
     - delegated_vision_for_layout_diagram_ui_understanding
     - delegated_vision_as_local_ocr_fallback
   local_ocr_subprocess_isolation_enabled: true
+  delegated_vision_non_text_block_fallback_enabled: true
+  delegated_vision_empty_provider_response_typed_failure_enabled: true
+  delegated_vision_live_empty_response_verified_on: 2026-07-17
+  delegated_vision_live_empty_response_receipt:
+    provider: delegated_vision
+    model: xiaomi/mimo-v2.5
+    request_id: f3819dd1ae36
+    provider_response_id: gen-1784260265-8Tzm9HkrD9s3xdsdgODu
+    finish_reason: length
+    raw_message_content_type: NoneType
+    normalized_block_count: 0
+  execution_policy_status_is_session_aware: true
+  execution_policy_ui_boolean_defaults_are_truthful: true
+  strict_and_project_run_shell_reject_command_substitution_explicitly: true
+  canonical_execution_boundary_contract_enabled: true
+  canonical_execution_boundary_modes:
+    - contained
+    - brokered
+    - host_elevated
+  execution_boundary_structured_http_egress_enabled: true
+  api_health_execution_policy_accepts_session_id_query: true
+  repo_local_truth_import_manifest_enabled: true
+  repo_local_truth_import_manifest_path: IMPORTS.yaml
   transcript_final_answer_primary_output_behavior_enabled: true
   firecrawl_tools_enabled: true
   firecrawl_scrape_page_prefers_firecrawl_when_configured: true

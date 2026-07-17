@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request
 
 from backend.agent.providers import provider_metadata, reset_provider
 from backend.agent.tools.health_check import run_tool_health_checks
+from backend.agent.tools.execution_boundary import execution_boundary_for_session
 from backend.config import build_service_auth_headers, resolve_env
 
 router = APIRouter()
@@ -17,6 +18,7 @@ router = APIRouter()
 
 @router.get("/health")
 async def health_check(request: Request):
+    session_id = request.query_params.get("session_id") or "default"
     tool_health = getattr(request.app.state, "tool_health", None)
     provider = getattr(request.app.state, "provider", None)
     status = "healthy"
@@ -31,11 +33,13 @@ async def health_check(request: Request):
         "version": "1.0.0",
         "tools": tool_health,
         "provider": provider,
+        "execution_policy": execution_boundary_for_session(session_id),
     }
 
 
 @router.get("/health/diagnostics")
 async def diagnostics(request: Request):
+    session_id = request.query_params.get("session_id") or "default"
     process = psutil.Process(os.getpid())
     vm = psutil.virtual_memory()
     du = shutil.disk_usage("/")
@@ -158,6 +162,7 @@ async def diagnostics(request: Request):
         },
         "tools": getattr(request.app.state, "tool_health", None),
         "provider": getattr(request.app.state, "provider", None),
+        "execution_policy": execution_boundary_for_session(session_id),
         "services": {
             "asr": asr_health,
             "tts": tts_health,

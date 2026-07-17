@@ -71,6 +71,11 @@ For full context, use the `project-state/` package.
 - Provider envs now load in canonical order (`.env` -> `backend/.env` -> `.env.polymorph`) instead of depending on current working directory.
 - OpenAI-compatible transport currently targets OpenRouter: `https://openrouter.ai/api/v1`.
 - Local Triad Zero service discovery now uses the workstation-local substrate first for MongoDB, PostgreSQL, Redis, NATS, RedWatch, and CollabFabric.
+- PolyMorph runtime-critical memory endpoints now target Docker DNS on `aether-infra` instead of the legacy Tailscale host IP:
+  - Redis: `aether-redis:6379`
+  - MongoDB: `aether-mongo:27017`
+  - PostgreSQL: `aether-postgres:5432`
+  - Qdrant remains the local compose service `qdrant:6333`
 - A local Qdrant fallback is provided from the Polymorph compose stack because Triad Zero did not expose a running Qdrant service at audit time.
 - Multiple client-facing LiteLLM gateway assumptions are being removed; remote nodes are worker backends behind the unified gateway.
 - Explicit fallback now suppresses implicit LiteLLM fallback injection unless `AGENT_ENABLE_IMPLICIT_LITELLM_FALLBACKS=true` is set.
@@ -87,6 +92,21 @@ For full context, use the `project-state/` package.
   - tool surface: `inspect_visual` for auto-routing and `inspect_image` for delegated-VLM-only use
   - route order: local OCR first for text-heavy screenshots/documents, delegated vision for layout/diagram/UI interpretation or OCR fallback
   - local OCR is isolated in a subprocess because direct in-process Paddle runtime is not stable on this workstation
+  - delegated vision now preserves useful prose from non-text response blocks instead of dropping the observation into an empty structured payload
+  - delegated vision now fails truthfully with `empty_provider_response` when the OpenAI-compatible provider returns HTTP success but no usable normalized content
+  - live proof on Friday, July 17, 2026:
+    - provider `delegated_vision`
+    - model `xiaomi/mimo-v2.5`
+    - request `f3819dd1ae36`
+    - provider response `gen-1784260265-8Tzm9HkrD9s3xdsdgODu`
+    - result `finish_reason=length`, `message.content=None`, `normalized_block_count=0`
+- Execution-boundary reporting now carries session-aware scope metadata:
+  - `get_harness_status`, `/api/health`, and `/api/health/diagnostics` now share one canonical execution-boundary payload
+  - canonical execution modes are now `contained`, `brokered`, and `host_elevated`
+  - execution policy now reports structured HTTP egress lanes (`tools`, `shell`, `connectors`, `raw_sockets`)
+  - the connections panel now renders truthful boolean defaults for execution-policy toggles
+  - strict/project `run_shell` now rejects `$(...)` command substitution explicitly instead of echoing it through as plain text
+- Repo-local truth intake is now anchored by `IMPORTS.yaml` so saved canvas context does not outrank project-state/runtime truth.
 - Vision provider state now exposes truthful runtime badges and routing metadata:
   - `VISION: LOCAL OCR`
   - `VISION: DELEGATED`

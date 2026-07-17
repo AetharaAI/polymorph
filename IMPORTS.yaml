@@ -1,0 +1,20 @@
+version: 1
+purpose: repo_local_truth_import_manifest
+canonical_truth_order:
+  - PROJECT_STATE.md
+  - project-state/ai/manifest.yaml
+  - project-state/ai/current-state.yaml
+  - project-state/ai/runtime-contracts.yaml
+  - project-state/ai/repo-map.yaml
+repo_local_context:
+  - project-state/human/Architecture-Overview.md
+  - project-state/human/Runtime-Contracts.md
+  - project-state/human/Changelog.md
+  - mini-agent/docs/Autonomous-Control-Plane-Roadmap.md
+  - AETHERPRO_INFRA_TOPOLOGY.md
+  - fleet-inventory/
+import_rules:
+  - prefer_project_state_for_current_runtime_truth
+  - prefer_runtime_code_over_stale_docs_when_they_conflict
+  - treat_saved_canvas_conversations_as_supporting_context_not_primary_truth
+  - do_not_import_external_network_topology_claims_without_runtime_verification

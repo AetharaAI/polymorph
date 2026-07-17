@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
 from backend.channels import ChannelManager
+from backend.agent.tools.execution_boundary import execution_boundary_for_session
 from backend.agent.providers import provider_metadata, reset_provider
 from backend.config import (
     UNIFIED_OPENAI_COMPAT_BASE_URL,
@@ -250,6 +251,22 @@ def _service_effective_values(service_id: str, draft: dict[str, str] | None = No
             out["CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS"] = resolve_env("CHANNELS_TELEGRAM_ALLOWED_CHAT_IDS", default="").strip()
         if not out.get("CHANNELS_TELEGRAM_SESSION_SCOPE"):
             out["CHANNELS_TELEGRAM_SESSION_SCOPE"] = resolve_env("CHANNELS_TELEGRAM_SESSION_SCOPE", default="chat").strip() or "chat"
+    elif service_id == "governance":
+        if not out.get("AGENT_REQUIRE_PLAN_FOR_PROJECTS"):
+            out["AGENT_REQUIRE_PLAN_FOR_PROJECTS"] = (
+                resolve_env("AGENT_REQUIRE_PLAN_FOR_PROJECTS", default="false").strip() or "false"
+            )
+        if not out.get("AGENT_PLAN_APPROVAL_MODE"):
+            out["AGENT_PLAN_APPROVAL_MODE"] = (
+                resolve_env("AGENT_PLAN_APPROVAL_MODE", default="auto").strip() or "auto"
+            )
+    elif service_id == "execution_policy":
+        shell_profile = out.get("AGENT_SHELL_PROFILE", "").strip().lower() or "strict"
+        out["AGENT_SHELL_PROFILE"] = shell_profile
+        if not out.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"):
+            out["AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"] = "true" if shell_profile == "project_full" else "false"
+        if not out.get("AGENT_ALLOW_HTTP_EGRESS"):
+            out["AGENT_ALLOW_HTTP_EGRESS"] = resolve_env("AGENT_ALLOW_HTTP_EGRESS", default="true").strip() or "true"
     return out
 
 
@@ -383,11 +400,15 @@ async def _test_governance(values: dict[str, str], timeout_seconds: float) -> tu
 async def _test_execution_policy(values: dict[str, str], timeout_seconds: float) -> tuple[str, str]:
     _ = timeout_seconds
     shell_profile = values.get("AGENT_SHELL_PROFILE", "strict").strip().lower() or "strict"
-    outside_workspace = _env_flag(values.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"), default=shell_profile == "project_full")
+    outside_workspace = _env_flag(
+        values.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"),
+        default=shell_profile == "project_full",
+    )
     http_egress = _env_flag(values.get("AGENT_ALLOW_HTTP_EGRESS"), default=True)
+    mode = "brokered" if outside_workspace or shell_profile == "project_full" else "contained"
     return (
         "healthy",
-        f"shell_profile={shell_profile} outside_workspace_access={outside_workspace} http_egress={http_egress}",
+        f"scope_mode={mode} shell_profile={shell_profile} outside_workspace_access={outside_workspace} http_egress={http_egress}",
     )
 
 
@@ -484,14 +505,13 @@ async def get_connections(request: Request):
                 f"session_namespace={runtime.get('session_namespace')}"
             )
         elif service_id == "execution_policy":
-            shell_profile = effective.get("AGENT_SHELL_PROFILE", "strict").strip() or "strict"
-            outside_workspace = _env_flag(effective.get("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS"), default=shell_profile == "project_full")
-            http_egress = _env_flag(effective.get("AGENT_ALLOW_HTTP_EGRESS"), default=True)
+            boundary = execution_boundary_for_session("default")
             status = "healthy"
             details = (
-                f"shell_profile={shell_profile} "
-                f"outside_workspace_access={outside_workspace} "
-                f"http_egress={http_egress}"
+                f"scope_mode={boundary.get('scope_mode')} "
+                f"shell_profile={boundary.get('shell_profile')} "
+                f"outside_workspace_access={boundary.get('outside_workspace_access')} "
+                f"http_egress={((boundary.get('http_egress') or {}).get('tools'))}"
             )
         elif service_id == "telegram_channel":
             enabled = _env_flag(effective.get("CHANNELS_TELEGRAM_ENABLED"), default=False)

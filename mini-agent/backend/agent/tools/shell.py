@@ -6,60 +6,17 @@ import shlex
 import subprocess
 from pathlib import Path
 
+from backend.agent.tools.execution_boundary import (
+    PROJECT_ALLOWED_COMMANDS,
+    STRICT_ALLOWED_COMMANDS,
+    env_flag,
+    execution_boundary_for_session,
+    execution_boundary_for_workspace,
+    shell_profile,
+)
 from backend.agent.tools.workspace import get_session_workspace
 
-
-STRICT_ALLOWED_COMMANDS = {
-    "ls", "pwd", "cat", "head", "tail", "grep", "wc", "echo", "date", "curl",
-    "which", "find", "sed", "awk", "cut", "sort", "uniq", "tr", "xargs", "jq",
-    "rg", "uname", "whoami", "env", "df", "du", "stat", "file"
-}
-
-PROJECT_ALLOWED_COMMANDS = STRICT_ALLOWED_COMMANDS | {
-    "mkdir", "touch", "cp", "mv", "rm", "python", "python3", "pip", "pip3",
-    "node", "npm", "pnpm", "yarn", "pytest", "uvicorn", "git"
-}
-
-SHELL_META_PATTERN = re.compile(r"[;&|><`\n]")
-
-
-def _profile() -> str:
-    return os.getenv("AGENT_SHELL_PROFILE", "strict").strip().lower()
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _policy(workspace: Path) -> dict[str, object]:
-    profile = _profile()
-    outside_workspace = _env_flag("AGENT_ALLOW_OUTSIDE_WORKSPACE_ACCESS", profile == "project_full")
-    http_egress = _env_flag("AGENT_ALLOW_HTTP_EGRESS", True)
-    if profile == "strict":
-        allowed_commands = sorted(STRICT_ALLOWED_COMMANDS)
-    elif profile == "project":
-        allowed_commands = sorted(PROJECT_ALLOWED_COMMANDS)
-    else:
-        allowed_commands = ["<full shell in backend container>"]
-    return {
-        "shell_profile": profile,
-        "workspace_root": str(workspace),
-        "single_command_only": profile != "project_full",
-        "outside_workspace_access": outside_workspace,
-        "http_egress": http_egress,
-        "allowed_commands": allowed_commands,
-        "container_scope_note": (
-            "Access beyond the session workspace is still limited to the backend container filesystem "
-            "and mounted volumes; this does not grant arbitrary host access."
-        ),
-    }
-
-
-def execution_policy_for_session(session_id: str | None = None) -> dict[str, object]:
-    return _policy(get_session_workspace(session_id or "default"))
+SHELL_META_PATTERN = re.compile(r"[;&|><`\n]|\$\(")
 
 
 def _json_error(message: str, *, command: str, policy: dict[str, object]) -> str:
@@ -92,13 +49,13 @@ def _extract_absolute_paths(parts: list[str]) -> list[Path]:
 async def run_shell(command: str, session_id: str | None = None) -> str:
     """Run a restricted shell command or project-profile command in session workspace."""
     try:
-        profile = _profile()
+        profile = shell_profile()
         timeout = int(os.getenv("SHELL_TIMEOUT_SECONDS", "60"))
         if profile == "project_full":
             timeout = int(os.getenv("SHELL_TIMEOUT_SECONDS", "300"))
 
         workspace = get_session_workspace(session_id or "default")
-        policy = _policy(workspace)
+        policy = execution_boundary_for_workspace(workspace, session_id or "default")
         raw_command = (command or "").strip()
         if not raw_command:
             return _json_error("Empty command.", command=command or "", policy=policy)
@@ -106,7 +63,7 @@ async def run_shell(command: str, session_id: str | None = None) -> str:
         if profile != "project_full" and SHELL_META_PATTERN.search(raw_command):
             return _json_error(
                 "run_shell accepts exactly one command in strict/project profiles. "
-                "Chaining, pipes, redirection, and inline cd are disabled. "
+                "Chaining, pipes, redirection, command substitution, and inline cd are disabled. "
                 "Use a single allowed command, or use run_project_command for multi-step workspace execution.",
                 command=raw_command,
                 policy=policy,
@@ -133,7 +90,9 @@ async def run_shell(command: str, session_id: str | None = None) -> str:
                 policy=policy,
             )
 
-        if base_cmd == "curl" and not policy["http_egress"]:
+        http_egress = policy.get("http_egress") or {}
+
+        if base_cmd == "curl" and not http_egress.get("shell", False):
             return _json_error(
                 "HTTP/network egress is disabled by execution policy. Ask the operator to enable it in the UI before using curl.",
                 command=raw_command,
@@ -205,5 +164,5 @@ async def run_shell(command: str, session_id: str | None = None) -> str:
         return _json_error(
             str(e),
             command=(command or "").strip(),
-            policy=_policy(workspace),
+            policy=execution_boundary_for_workspace(workspace, session_id or "default"),
         )

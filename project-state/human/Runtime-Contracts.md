@@ -123,6 +123,61 @@ Dispatch model:
 - tool planning is now explicitly internal-only; the prompt contract forbids visible pseudo tool calls and visible chain-of-thought
 - message-history compaction now budgets against the effective context window for the active iteration instead of relying only on a global large char cap
 
+## Execution Boundary Contract
+
+Canonical execution-boundary builder:
+- `mini-agent/backend/agent/tools/execution_boundary.py`
+
+Primary consumers:
+- `mini-agent/backend/agent/tools/shell.py`
+- `mini-agent/backend/agent/tools/project_runner.py`
+- `mini-agent/backend/agent/tools/health_check.py`
+- `mini-agent/backend/api/health.py`
+- `mini-agent/backend/api/connections.py`
+- `mini-agent/backend/prompts/system_prompt.md`
+- `mini-agent/frontend/src/components/StatusBar.tsx`
+
+Canonical scope modes:
+- `contained`
+  - shell/project inspection is limited to the current session workspace
+  - the model must not infer that outside paths are globally absent
+- `brokered`
+  - shell/project inspection may reach beyond the session workspace, but only through backend-container-visible paths and approved tool/runtime lanes
+  - this is broader than workspace scope but must not be described as arbitrary host access
+- `host_elevated`
+  - broader machine-visible scope is explicitly enabled
+  - the agent should be more explicit about touched paths and risk
+
+Canonical execution-boundary payload fields:
+- `session_id`
+- `workspace_id`
+- `workspace_root`
+- `shell_profile`
+- `scope_mode`
+- `scope_summary`
+- `model_guidance`
+- `single_command_only`
+- `outside_workspace_access`
+- `allowed_roots`
+- `http_egress`
+  - `tools`
+  - `shell`
+  - `connectors`
+  - `raw_sockets`
+- `http_egress_note`
+- `allowed_commands`
+- `container_scope_note`
+
+Health/status exposure rules:
+- `get_harness_status` returns the canonical execution-boundary payload for the active session
+- `GET /api/health` and `GET /api/health/diagnostics` now accept an optional `session_id` query param so UI/runtime inspection can report the real session workspace instead of always reporting `default`
+- Connections UI keeps the same operator controls, but its execution-policy summary should align with the canonical backend builder
+
+Prompt behavior rules:
+- if `scope_mode=contained`, the agent should explicitly say that shell/project inspection was limited to the session workspace
+- if `outside_workspace_access=false`, the agent must not treat absent files or paths as globally missing
+- if `http_egress.tools=false`, the agent should say external HTTP reachability is policy-disabled rather than unknown/broken
+
 ## Memory Contract
 
 The harness is designed to use:

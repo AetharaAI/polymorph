@@ -31,6 +31,10 @@
 - Marked the message adapter layer as the first current priority, with Syndicate as the first platform-specific autonomy target after adapters.
 - Updated repo instructions and state docs so future runs inherit the operational-asset standard instead of defaulting to benchmark/demo-first behavior.
 - Recorded the real state of the current channel slice more explicitly: Telegram webhook bridge exists, but queueing, WhatsApp, and canonical action receipts are still missing.
+- Hardened delegated vision capture on July 17, 2026:
+  - OpenAI-compatible delegated vision now normalizes string content, content-block arrays, `output_text`, refusal text, and object-backed message payloads more safely.
+  - When the delegated provider returns HTTP success but no usable normalized blocks, PolyMorph now returns a typed `empty_provider_response` instead of a fake empty successful observation.
+  - Live Xiaomi MiMo-V2.5 verification on July 17, 2026 proved case `B` of the stop condition: the upstream call completed with `finish_reason=length` and no usable normalized content, and the harness now exposes that truthfully with request/response diagnostics.
 
 ## 2026-03-17
 - Completed the persistent browser voice loop in PolyMorph: the voice button now starts a live session, speech turns auto-dispatch into `/api/voice/turn`, Kokoro realtime TTS plays the reply, and the session resumes listening until toggled off.

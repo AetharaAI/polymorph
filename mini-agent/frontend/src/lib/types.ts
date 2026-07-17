@@ -156,6 +156,27 @@ export interface DiagnosticsResponse {
   };
   tools?: ToolHealthSummary | null;
   provider?: ProviderHealth | null;
+  execution_policy?: {
+    session_id?: string;
+    workspace_id?: string;
+    shell_profile: string;
+    workspace_root: string;
+    scope_mode: 'contained' | 'brokered' | 'host_elevated' | string;
+    scope_summary?: string;
+    model_guidance?: string;
+    single_command_only: boolean;
+    outside_workspace_access: boolean;
+    allowed_roots?: string[];
+    http_egress: {
+      tools: boolean;
+      shell: boolean;
+      connectors: boolean;
+      raw_sockets: boolean;
+    };
+    http_egress_note?: string;
+    allowed_commands?: string[];
+    container_scope_note?: string;
+  } | null;
   services?: {
     asr?: AsrServiceHealth;
     tts?: {
